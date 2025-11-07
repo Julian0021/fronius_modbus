@@ -63,7 +63,10 @@ async def validate_input(hass: HomeAssistant, data: dict) -> dict[str, Any]:
     if data[CONF_SCAN_INTERVAL] < 5:
         raise ScanIntervalTooShort
         
-    meter_addresses = [data[CONF_METER_UNIT_ID]]
+    if data[CONF_METER_UNIT_ID] > 0:
+        meter_addresses = [data[CONF_METER_UNIT_ID]]
+    else:
+        meter_addresses = []
 
     all_addresses = meter_addresses + [data[CONF_INVERTER_UNIT_ID]] 
 

@@ -33,8 +33,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: HubConfigEntry) -> bool:
     name = entry.data[CONF_NAME]
     port = entry.data[CONF_PORT]
     inverter_unit_id = entry.data.get(CONF_INVERTER_UNIT_ID, 1)
-    meter_unit_ids = [entry.data.get(CONF_METER_UNIT_ID, 1)]
     scan_interval = entry.data[CONF_SCAN_INTERVAL]
+
+    meter_unit_id = entry.data[CONF_METER_UNIT_ID]
+    if meter_unit_id and meter_unit_id > 0:
+        meter_unit_ids = [meter_unit_id]
+    else:
+        meter_unit_ids = []
 
     _LOGGER.debug("Setup %s.%s", DOMAIN, name)
 

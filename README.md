@@ -125,16 +125,13 @@ To come!
 # Example Devices (Outdated screenshots!)
 
 Battery Storage
-![battery storage](images/example_batterystorage0.png?raw=true "storage")
-
-Battery Storage Actions
-![battery storage actions](images/example_batterystorage.png?raw=true "storage actions")
+![battery storage](images/example_batterystorage.jpg?raw=true "storage")
 
 Smart Meter
-![smart meter](images/example_meter.png?raw=true "meter")
+![smart meter](images/example_meter.jpg?raw=true "meter")
 
 Inverter 
-![smart meter](images/example_inverter.png?raw=true "inverter")
+![smart meter](images/example_inverter.jpg?raw=true "inverter")
 
 
 # References

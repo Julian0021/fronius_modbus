@@ -17,7 +17,7 @@ HACS installation
 * Go to HACS
 * Click on the 3 dots in the top right corner.
 * Select "Custom repositories"
-* Add the [URL](https://github.com/redpomodoro/fronius_modbus) to the repository.
+* Add the [URL](https://github.com/callifo/fronius_modbus) to the repository.
 * Select the 'integration' type.
 * Click the "ADD" button.
 
@@ -116,6 +116,11 @@ To come!
 | --- | --- |
 | Grid status | Grid status based on meter and interter frequency. If inverter frequency is 53hz it is running in off grid mode and normally in 50hz. When the inverter is sleeping the meter frequency is checked for connection. |
 
+### Inverter Controls
+| Entity  | Description |
+| --- | --- |
+| Export Limit Enable | Allows limiting of inverter export to grid. Enable this setting first, and after set the export limit in setting below. |
+| Export Limit Rate | This setting in Watts allows setting how much solar can be exported to the grid. Setting seems to take this as a maximum, and it wont be exactly this, likely a bit less.  |
 
 # Example Devices (Outdated screenshots!)
 

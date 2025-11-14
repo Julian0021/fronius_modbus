@@ -53,7 +53,6 @@ class FroniusModbusClient(ExtModbusClient):
         self._meter_unit_ids = meter_unit_ids
 
         self.meter_configured = False
-        self.mppt_register_supported = True
         self.mppt_configured = False
         self.storage_configured = False
         self.storage_extended_control_mode = 0
@@ -80,7 +79,7 @@ class FroniusModbusClient(ExtModbusClient):
             raise Exception(f"Empty inverter info unit id: {self._inverter_unit_id}")
 
         try:
-            if self.mppt_register_supported and await self.read_mppt_data():
+            if await self.read_mppt_data():
                 self.mppt_configured = True
         except Exception as e:
             _LOGGER.warning(f"Error while checking mppt data {e}")
@@ -158,9 +157,6 @@ class FroniusModbusClient(ExtModbusClient):
         sw_version = self.get_string_from_registers(regs[40:48])
         serial =  self.get_string_from_registers(regs[48:64])
         modbus_id = self._client.convert_from_registers(regs[64:65], data_type = self._client.DATATYPE.UINT16)
-
-        if model.startswith('Primo GEN24'):
-            self.mppt_register_supported = False
 
         self.data[prefix + 'manufacturer'] = manufacturer
         self.data[prefix + 'model'] = model

@@ -718,18 +718,33 @@ class FroniusModbusClient(ExtModbusClient):
         _LOGGER.info(f"Set charge/discharge mode.")
 
     async def set_grid_charge_mode(self):
-        grid_charge_power = 0
-        discharge_rate = grid_charge_power * -1
-        await self.change_settings(mode=1, charge_limit=100, discharge_limit=discharge_rate, grid_charge_power=grid_charge_power)
+        # Keep previous grid_charge_power if available, otherwise default to 0
+        grid_charge_power = self.data.get('grid_charge_power', 0)
+
+        await self.change_settings(
+            mode=1,                # Charge
+            charge_limit=100,      # allow charging up to 100%
+            discharge_limit=0,     # no discharging in this mode
+            grid_charge_power=grid_charge_power,
+        )
         self.storage_extended_control_mode = 4
-        _LOGGER.info(f"Forced charging at {grid_charge_power}")
+        _LOGGER.info(f"Charge from grid enabled, target {grid_charge_power} W")
+
 
     async def set_grid_discharge_mode(self):
-        grid_discharge_power = 0
-        charge_rate = grid_discharge_power * -1
-        await self.change_settings(mode=2, charge_limit=charge_rate, discharge_limit=100, grid_discharge_power=grid_discharge_power)
+        # Keep previous grid_discharge_power if available, otherwise default to 0
+        grid_discharge_power = self.data.get('grid_discharge_power', 0)
+
+        await self.change_settings(
+            mode=2,                # Discharge
+            charge_limit=0,        # no charging in this mode
+            discharge_limit=100,   # allow discharging up to 100%
+            grid_discharge_power=grid_discharge_power,
+        )
         self.storage_extended_control_mode = 5
-        _LOGGER.info(f"Forced discharging to grid {grid_discharge_power}")
+        _LOGGER.info(
+            f"Discharge to grid enabled, target {grid_discharge_power} W"
+        )
 
     async def set_block_discharge_mode(self):
         charge_rate = 100

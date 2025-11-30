@@ -67,30 +67,16 @@ async def async_setup_entry(hass, config_entry, async_add_entities) -> None:
     return True
 
 class FroniusModbusNumber(FroniusModbusBaseEntity, NumberEntity):
-    """Representation of an Battery Storage Modbus number."""
+    """Representation of a Battery Storage Modbus number."""
 
     @property
     def state(self):
         """Return the state of the sensor."""
-
         if self._key in self._hub.data:
-            if self._key in ['grid_discharge_power','discharge_limit']:
-                value = round(self._hub.data[self._key] / 100.0 * self._hub.max_discharge_rate_w,0)
-            elif self._key in ['grid_charge_power','charge_limit']:
-                value = round(self._hub.data[self._key] / 100.0 * self._hub.max_charge_rate_w,0)
-            else:
-                value = self._hub.data[self._key]    
-            return value
-
-    # @property
-    # def native_value(self) -> float:
-    #     if self._key in self._hub.data:
-    #         _LOGGER.debug(f'native_value {self._key}')
-    #         if self._key in ['grid_discharge_power','discharge_limit']:
-    #             return self._hub.data[self._key]/100.0 * self._hub.max_discharge_rate_w
-    #         elif self._key in ['grid_charge_power','charge_limit']:
-    #             return self._hub.data[self._key]/100.0 * self._hub.max_charge_rate_w
-    #         return self._hub.data[self._key]
+            # Treat stored values as real Watts (or the unit you configured),
+            # no extra % → W scaling here.
+            return self._hub.data[self._key]
+        return None
 
     async def async_set_native_value(self, value: float) -> None:
         """Change the selected value."""

@@ -336,19 +336,34 @@ class FroniusModbusClient(ExtModbusClient):
         regs = await self.get_registers(unit_id=self._inverter_unit_id, address=MPPT_ADDRESS, count=88)
         if regs is None:
             return False
-
+        
+        DCA_SF = self._client.convert_from_registers(regs[0:1], data_type = self._client.DATATYPE.INT16)
+        DCV_SF = self._client.convert_from_registers(regs[1:2], data_type = self._client.DATATYPE.INT16)
         DCW_SF = self._client.convert_from_registers(regs[2:3], data_type = self._client.DATATYPE.INT16)
         DCWH_SF = self._client.convert_from_registers(regs[3:4], data_type = self._client.DATATYPE.INT16)
         #N = self._client.convert_from_registers(regs[6:7], data_type = self._client.DATATYPE.UINT16)
         # if N != 4:
         #     _LOGGER.error(f"Integration only supports 4 mppt modules. Found only: {N}")
         #     return
-
+        module_1_DCA = self._client.convert_from_registers(regs[17:18], data_type = self._client.DATATYPE.UINT16)
+        module_1_DCV = self._client.convert_from_registers(regs[18:19], data_type = self._client.DATATYPE.UINT16)
         module_1_DCW = self._client.convert_from_registers(regs[19:20], data_type = self._client.DATATYPE.UINT16)
         module_1_DCWH = self._client.convert_from_registers(regs[20:22], data_type = self._client.DATATYPE.UINT32)
 
+        module_2_DCA = self._client.convert_from_registers(regs[37:38], data_type = self._client.DATATYPE.UINT16)
+        module_2_DCV = self._client.convert_from_registers(regs[38:39], data_type = self._client.DATATYPE.UINT16)
         module_2_DCW = self._client.convert_from_registers(regs[39:40], data_type = self._client.DATATYPE.UINT16)
         module_2_DCWH = self._client.convert_from_registers(regs[40:42], data_type = self._client.DATATYPE.UINT32)
+
+        mppt1_current = self.calculate_value(module_1_DCA, DCA_SF, 2, 0, 100)
+        mppt2_current = self.calculate_value(module_2_DCA, DCA_SF, 2, 0, 100)
+        self.data['mppt1_current'] = mppt1_current
+        self.data['mppt2_current'] = mppt2_current
+
+        mppt1_voltage = self.calculate_value(module_1_DCV, DCV_SF, 2, 0, 1500)
+        mppt2_voltage = self.calculate_value(module_2_DCV, DCV_SF, 2, 0, 1500)
+        self.data['mppt1_voltage'] = mppt1_voltage
+        self.data['mppt2_voltage'] = mppt2_voltage
 
         mppt1_power = self.calculate_value(module_1_DCW, DCW_SF, 2, 0, 15000)
         mppt2_power = self.calculate_value(module_2_DCW, DCW_SF, 2, 0, 15000)
@@ -359,12 +374,12 @@ class FroniusModbusClient(ExtModbusClient):
 
         mppt1_lfte = self.calculate_value(module_1_DCWH, DCWH_SF)
         mppt2_lfte = self.calculate_value(module_2_DCWH, DCWH_SF)
-
         self.data['mppt1_power'] = mppt1_power
         self.data['mppt2_power'] = mppt2_power
 
         mppt1_lfte = self.protect_lfte('mppt1_lfte', mppt1_lfte)
         mppt2_lfte = self.protect_lfte('mppt2_lfte', mppt2_lfte)
+
 
         self.data['pv_power'] = pv_power
 

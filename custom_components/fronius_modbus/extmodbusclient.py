@@ -252,10 +252,10 @@ class ExtModbusClient:
         if self.is_numeric(value) and self.is_numeric(sf):
             rvalue = round(value * 10**sf, digits)
             if not lower_bound is None and rvalue < lower_bound:
-                _LOGGER.error(f'calculated value: {rvalue} below lower bound {lower_bound} value: {value} sf: {sf} digits {digits}', stack_info=True)
+                _LOGGER.debug(f'calculated value: {rvalue} below lower bound {lower_bound} value: {value} sf: {sf} digits {digits}', stack_info=True)
                 return None
             if not upper_bound is None and rvalue > upper_bound:
-                _LOGGER.error(f'calculated value: {rvalue} above upper bound {upper_bound} value: {value} sf: {sf} digits {digits}', stack_info=True)
+                _LOGGER.debug(f'calculated value: {rvalue} above upper bound {upper_bound} value: {value} sf: {sf} digits {digits}', stack_info=True)
                 return None                    
             return round(value * 10**sf, digits)
         else:

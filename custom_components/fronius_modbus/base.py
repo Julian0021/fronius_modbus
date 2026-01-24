@@ -40,7 +40,7 @@ class FroniusModbusBaseEntity(CoordinatorEntity):
 
         self._attr_has_entity_name = True
         self._attr_name = name
-        self._attr_unique_id = f"{coordinator.name}_{key}"
+        self._attr_unique_id = f"{coordinator.hub.entity_prefix}_{self._key}"
         self._attr_device_info = device_info
 
     @property

@@ -78,7 +78,7 @@ class FroniusCoordinator(DataUpdateCoordinator):
 class Hub:
     """Hub for Fronius Battery Storage Modbus Interface"""
 
-    PYMODBUS_VERSION = '3.11.1'
+    PYMODBUS_VERSION = '3.11.2'
 
     def __init__(self, hass: HomeAssistant, name: str, host: str, port: int, inverter_unit_id: int, meter_unit_ids, scan_interval: int) -> None:
         """Init hub."""

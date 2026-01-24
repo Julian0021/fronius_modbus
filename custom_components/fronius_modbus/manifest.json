@@ -7,6 +7,6 @@
     "documentation": "https://github.com/callifo/fronius_modbus",
     "iot_class": "local_polling",
     "issue_tracker": "https://github.com/callifo/fronius_modbus/issues",
-    "requirements": ["pymodbus>=3.11.1"],
-    "version": "0.2.6"
+    "requirements": ["pymodbus>=3.11.2"],
+    "version": "0.2.7"
   }

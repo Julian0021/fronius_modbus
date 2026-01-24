@@ -22,7 +22,6 @@ from .froniusmodbusclient_const import (
     EXPORT_LIMIT_RATE_ADDRESS,
     EXPORT_LIMIT_ENABLE_ADDRESS,
     CONN_ADDRESS,
-    WMAX_LIM_PCT_ADDRESS,
     STORAGE_CONTROL_MODE,
     CHARGE_STATUS,
     CHARGE_GRID_STATUS,
@@ -289,13 +288,11 @@ class FroniusModbusClient(ExtModbusClient):
             return False
 
         Conn = self._client.convert_from_registers(regs[2:3], data_type = self._client.DATATYPE.UINT16)
-        WMaxLimPct = self._client.convert_from_registers(regs[5:6], data_type = self._client.DATATYPE.UINT16)  # WMaxLimPct register
         WMaxLim_Ena = self._client.convert_from_registers(regs[7:8], data_type = self._client.DATATYPE.UINT16)
         OutPFSet_Ena = self._client.convert_from_registers(regs[12:13], data_type = self._client.DATATYPE.UINT16)
         VArPct_Ena = self._client.convert_from_registers(regs[20:21], data_type = self._client.DATATYPE.INT16)
 
         self.data['Conn'] = CONTROL_STATUS[Conn]
-        self.data['WMaxLimPct'] = self.calculate_value(WMaxLimPct, 0, 2, 0, 100)  # Scale factor 0, percentage 0-100%
         self.data['WMaxLim_Ena'] = CONTROL_STATUS[WMaxLim_Ena]
         self.data['OutPFSet_Ena'] = CONTROL_STATUS[OutPFSet_Ena]
         self.data['VArPct_Ena'] = CONTROL_STATUS[VArPct_Ena]
@@ -820,15 +817,3 @@ class FroniusModbusClient(ExtModbusClient):
         await self.write_registers(unit_id=self._inverter_unit_id, address=CONN_ADDRESS, payload=[conn_value])
         self.data['Conn'] = CONTROL_STATUS[conn_value]
         _LOGGER.info(f"Set inverter connection status to {conn_value} ({'Connected' if enable else 'Disconnected/Standby'})")
-
-    async def set_generation_limit_pct(self, limit_pct: float):
-        """Set absolute generation limit percentage (0-100%)"""
-        if limit_pct < 0:
-            limit_pct = 0
-        elif limit_pct > 100:
-            limit_pct = 100
-
-        limit_value = int(limit_pct)  # Scale factor is 0, so direct percentage value
-        await self.write_registers(unit_id=self._inverter_unit_id, address=WMAX_LIM_PCT_ADDRESS, payload=[limit_value])
-        self.data['WMaxLimPct'] = limit_pct
-        _LOGGER.info(f"Set generation limit to {limit_pct}%")

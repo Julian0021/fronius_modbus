@@ -281,7 +281,3 @@ class Hub:
     async def set_conn_status(self, enable):
         await self._client.set_conn_status(enable)
 
-    async def set_generation_limit_pct(self, limit_pct: float):
-        """Set absolute generation limit percentage (0-100%)"""
-        await self._client.set_generation_limit_pct(limit_pct)
-

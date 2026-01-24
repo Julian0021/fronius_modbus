@@ -110,8 +110,6 @@ class FroniusModbusNumber(FroniusModbusBaseEntity, NumberEntity):
             await self._hub.set_grid_discharge_power(value)
         elif self._key == 'export_limit_rate':
             await self._hub.apply_export_limit(value)
-        elif self._key == 'WMaxLimPct':
-            await self._hub.set_generation_limit_pct(value)
 
         #_LOGGER.debug(f"Number {self._key} set to {value}")
         self.async_write_ha_state()
@@ -131,6 +129,4 @@ class FroniusModbusNumber(FroniusModbusBaseEntity, NumberEntity):
             return True
         if self._key == 'export_limit_rate':
             return True
-        if self._key == 'WMaxLimPct':
-            return True  # Generation limit is always available
         return False

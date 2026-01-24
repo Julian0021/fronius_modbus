@@ -18,48 +18,47 @@ from .base import FroniusModbusBaseEntity
 _LOGGER = logging.getLogger(__name__)
 
 async def async_setup_entry(hass, config_entry, async_add_entities) -> None:
-    hub:Hub = config_entry.runtime_data
+    hub: Hub = config_entry.runtime_data
+    coordinator = hub.coordinator
 
     entities = []
 
     if hub.storage_configured:
-
         for number_info in STORAGE_NUMBER_TYPES:
-
-            max = None
+            max_val = None
             max_key = number_info[2].get('max_key')
-            if not max_key is None:
-                max = hub.data.get(max_key)
-            if max is None:
-                max = number_info[2]['max']
+            if max_key is not None:
+                max_val = hub.data.get(max_key)
+            if max_val is None:
+                max_val = number_info[2]['max']
 
             number = FroniusModbusNumber(
-                hub.entity_prefix,
-                hub,
-                hub.device_info_storage,
-                number_info[0],
-                number_info[1],
-                min = number_info[2]['min'],
-                max = max,
-                unit = number_info[2]['unit'],
-                mode = number_info[2]['mode'],
-                native_step = number_info[2]['step'],
+                coordinator=coordinator,
+                device_info=hub.device_info_storage,
+                name=number_info[0],
+                key=number_info[1],
+                min_val=number_info[2]['min'],
+                max_val=max_val,
+                unit=number_info[2]['unit'],
+                mode=number_info[2]['mode'],
+                native_step=number_info[2]['step'],
+                hub=hub,  # Pass hub for control methods
             )
             entities.append(number)
 
     # Add inverter number entities (export limit controls)
     for number_info in INVERTER_NUMBER_TYPES:
         number = FroniusModbusNumber(
-            hub.entity_prefix,
-            hub,
-            hub.device_info_inverter,
-            number_info[0],
-            number_info[1],
-            min = number_info[2]['min'],
-            max = number_info[2]['max'],
-            unit = number_info[2]['unit'],
-            mode = number_info[2]['mode'],
-            native_step = number_info[2]['step'],
+            coordinator=coordinator,
+            device_info=hub.device_info_inverter,
+            name=number_info[0],
+            key=number_info[1],
+            min_val=number_info[2]['min'],
+            max_val=number_info[2]['max'],
+            unit=number_info[2]['unit'],
+            mode=number_info[2]['mode'],
+            native_step=number_info[2]['step'],
+            hub=hub,  # Pass hub for control methods
         )
         entities.append(number)
 
@@ -69,16 +68,31 @@ async def async_setup_entry(hass, config_entry, async_add_entities) -> None:
 class FroniusModbusNumber(FroniusModbusBaseEntity, NumberEntity):
     """Representation of a Battery Storage Modbus number."""
 
+    def __init__(self, coordinator, device_info, name, key, min_val, max_val, unit, mode, native_step, hub):
+        """Initialize the number entity."""
+        super().__init__(
+            coordinator=coordinator,
+            device_info=device_info,
+            name=name,
+            key=key,
+            min=min_val,
+            max=max_val,
+            unit=unit,
+            mode=mode,
+            native_step=native_step,
+        )
+        self._hub = hub  # Store hub reference for control methods
+
     @property
     def state(self):
         """Return the state of the sensor."""
-        if self._key in self._hub.data:
+        if self.coordinator.data and self._key in self.coordinator.data:
             if self._key in ['grid_discharge_power', 'discharge_limit']:
-                return round(self._hub.data[self._key] / 100.0 * self._hub.max_discharge_rate_w, 0)
+                return round(self.coordinator.data[self._key] / 100.0 * self._hub.max_discharge_rate_w, 0)
             elif self._key in ['grid_charge_power', 'charge_limit']:
-                return round(self._hub.data[self._key] / 100.0 * self._hub.max_charge_rate_w, 0)
+                return round(self.coordinator.data[self._key] / 100.0 * self._hub.max_charge_rate_w, 0)
             else:
-                return self._hub.data[self._key]
+                return self.coordinator.data[self._key]
         return None
 
     async def async_set_native_value(self, value: float) -> None:

@@ -37,34 +37,33 @@ async def async_setup_entry(
     hub:Hub = config_entry.runtime_data
 
     entities = []
+    coordinator = hub.coordinator
 
     for sensor_info in INVERTER_SENSOR_TYPES.values():
         sensor = FroniusModbusSensor(
-            platform_name = hub.entity_prefix,
-            hub = hub,
-            device_info = hub.device_info_inverter,
-            name = sensor_info[0],
-            key = sensor_info[1],
-            device_class = sensor_info[2],
-            state_class = sensor_info[3],
-            unit = sensor_info[4],
-            icon = sensor_info[5],
-            entity_category = sensor_info[6],
+            coordinator=coordinator,
+            device_info=hub.device_info_inverter,
+            name=sensor_info[0],
+            key=sensor_info[1],
+            device_class=sensor_info[2],
+            state_class=sensor_info[3],
+            unit=sensor_info[4],
+            icon=sensor_info[5],
+            entity_category=sensor_info[6],
         )
         entities.append(sensor)
 
     for sensor_info in INVERTER_SYMO_SENSOR_TYPES.values():
         sensor = FroniusModbusSensor(
-            platform_name = hub.entity_prefix,
-            hub = hub,
-            device_info = hub.device_info_inverter,
-            name = sensor_info[0],
-            key = sensor_info[1],
-            device_class = sensor_info[2],
-            state_class = sensor_info[3],
-            unit = sensor_info[4],
-            icon = sensor_info[5],
-            entity_category = sensor_info[6],
+            coordinator=coordinator,
+            device_info=hub.device_info_inverter,
+            name=sensor_info[0],
+            key=sensor_info[1],
+            device_class=sensor_info[2],
+            state_class=sensor_info[3],
+            unit=sensor_info[4],
+            icon=sensor_info[5],
+            entity_category=sensor_info[6],
         )
         entities.append(sensor)
 
@@ -72,47 +71,44 @@ async def async_setup_entry(
         meter_id = '1'
         for sensor_info in METER_SENSOR_TYPES.values():
             sensor = FroniusModbusSensor(
-                platform_name = hub.entity_prefix,
-                hub = hub,
-                device_info = hub.get_device_info_meter(meter_id),
-                name = f'Meter {meter_id} ' + sensor_info[0],
-                key = f'm{meter_id}_' + sensor_info[1],
-                device_class = sensor_info[2],
-                state_class = sensor_info[3],
-                unit = sensor_info[4],
-                icon = sensor_info[5],
-                entity_category = sensor_info[6],
+                coordinator=coordinator,
+                device_info=hub.get_device_info_meter(meter_id),
+                name=f'Meter {meter_id} ' + sensor_info[0],
+                key=f'm{meter_id}_' + sensor_info[1],
+                device_class=sensor_info[2],
+                state_class=sensor_info[3],
+                unit=sensor_info[4],
+                icon=sensor_info[5],
+                entity_category=sensor_info[6],
             )
-            entities.append(sensor)        
+            entities.append(sensor)
 
     if hub.storage_configured:
         for sensor_info in INVERTER_STORAGE_SENSOR_TYPES.values():
             sensor = FroniusModbusSensor(
-                platform_name = hub.entity_prefix,
-                hub = hub,
-                device_info = hub.device_info_inverter,
-                name = sensor_info[0],
-                key = sensor_info[1],
-                device_class = sensor_info[2],
-                state_class = sensor_info[3],
-                unit = sensor_info[4],
-                icon = sensor_info[5],
-                entity_category = sensor_info[6],
+                coordinator=coordinator,
+                device_info=hub.device_info_inverter,
+                name=sensor_info[0],
+                key=sensor_info[1],
+                device_class=sensor_info[2],
+                state_class=sensor_info[3],
+                unit=sensor_info[4],
+                icon=sensor_info[5],
+                entity_category=sensor_info[6],
             )
             entities.append(sensor)
 
         for sensor_info in STORAGE_SENSOR_TYPES.values():
             sensor = FroniusModbusSensor(
-                platform_name = hub.entity_prefix,
-                hub = hub,
-                device_info = hub.device_info_storage,
-                name = sensor_info[0],
-                key = sensor_info[1],
-                device_class = sensor_info[2],
-                state_class = sensor_info[3],
-                unit = sensor_info[4],
-                icon = sensor_info[5],
-                entity_category = sensor_info[6],
+                coordinator=coordinator,
+                device_info=hub.device_info_storage,
+                name=sensor_info[0],
+                key=sensor_info[1],
+                device_class=sensor_info[2],
+                state_class=sensor_info[3],
+                unit=sensor_info[4],
+                icon=sensor_info[5],
+                entity_category=sensor_info[6],
             )
             entities.append(sensor)
 
@@ -125,17 +121,13 @@ class FroniusModbusSensor(FroniusModbusBaseEntity, SensorEntity):
     @property
     def state(self):
         """Return the state of the sensor."""
-        if self._key in self._hub.data:
-            value = self._hub.data[self._key]
+        if self.coordinator.data and self._key in self.coordinator.data:
+            value = self.coordinator.data[self._key]
             if isinstance(value, str):
-                if len(value)>255:
+                if len(value) > 255:
                     value = value[:255]
                     _LOGGER.error(f'state length > 255. k: {self._key} v: {value}')
             return value
-
-            # self._icon = icon_for_battery_level(
-            #     battery_level=self.native_value, charging=False
-            # )                
 
     @property
     def extra_state_attributes(self):

@@ -10,6 +10,7 @@ from packaging import version as pkg_version
 from homeassistant.core import callback
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .froniusmodbusclient import FroniusModbusClient
 
@@ -19,6 +20,60 @@ from .const import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+
+class FroniusCoordinator(DataUpdateCoordinator):
+    """Coordinator for Fronius Modbus data updates."""
+
+    def __init__(self, hass: HomeAssistant, hub: Hub) -> None:
+        """Initialize the coordinator."""
+        super().__init__(
+            hass,
+            _LOGGER,
+            name=f"{DOMAIN}_{hub._id}_coordinator",
+            update_interval=hub._scan_interval,
+        )
+        self.hub = hub
+
+    async def _async_update_data(self) -> dict:
+        """Fetch all data from Fronius device."""
+        try:
+            # Read inverter data
+            await self.hub._client.read_inverter_data()
+
+            # Read inverter status data
+            await self.hub._client.read_inverter_status_data()
+
+            # Read inverter model settings data
+            await self.hub._client.read_inverter_model_settings_data()
+
+            # Read inverter controls data
+            await self.hub._client.read_inverter_controls_data()
+
+            # Read meter data if configured
+            if self.hub._client.meter_configured:
+                for meter_address in self.hub._client._meter_unit_ids:
+                    await self.hub._client.read_meter_data(
+                        meter_prefix="m1_",
+                        unit_id=meter_address
+                    )
+
+            # Read MPPT data if configured
+            if self.hub._client.mppt_configured:
+                await self.hub._client.read_mppt_data()
+
+            # Read export limit data
+            await self.hub._client.read_export_limit_data()
+
+            # Read storage data if configured
+            if self.hub._client.storage_configured:
+                await self.hub._client.read_inverter_storage_data()
+
+            return self.hub.data
+
+        except Exception as err:
+            raise UpdateFailed(f"Fronius data update failed: {err}")
+
 
 class Hub:
     """Hub for Fronius Battery Storage Modbus Interface"""
@@ -32,13 +87,11 @@ class Hub:
         self._entity_prefix = f'{ENTITY_PREFIX}_{name.lower()}_'
 
         self._id = f'{name.lower()}_{host.lower().replace('.','')}'
-        self.online = True        
+        self.online = True
 
         self._client = FroniusModbusClient(host=host, port=port, inverter_unit_id=inverter_unit_id, meter_unit_ids=meter_unit_ids, timeout=max(3, (scan_interval - 1)))
         self._scan_interval = timedelta(seconds=scan_interval)
-        self._unsub_interval_method = None
-        self._entities = []
-        self._entities_dict = {}
+        self.coordinator = None
         self._busy = False
 
     def toggle_busy(func):
@@ -59,13 +112,17 @@ class Hub:
             return result
         return wrapper
 
-    @toggle_busy
     async def init_data(self, close = False, read_status_data = False):
-        await self._hass.async_add_executor_job(self.check_pymodbus_version)  
+        """Initialize data and coordinator."""
+        await self._hass.async_add_executor_job(self.check_pymodbus_version)
         result = await self._client.init_data()
 
         if self.storage_configured:
-            result : bool = await self._hass.async_add_executor_job(self._client.get_json_storage_info)                
+            result : bool = await self._hass.async_add_executor_job(self._client.get_json_storage_info)
+
+        # Initialize the coordinator
+        self.coordinator = FroniusCoordinator(self._hass, self)
+        await self.coordinator.async_config_entry_first_refresh()
 
         return
 
@@ -131,91 +188,7 @@ class Hub:
         """Entity prefix for hub."""
         return self._entity_prefix
 
-    @callback
-    def async_add_hub_entity(self, update_callback):
-        """Listen for data updates."""
-        # This is the first entity, set up interval.
-        if not self._entities:
-            self._unsub_interval_method = async_track_time_interval(
-                self._hass, self.async_refresh_modbus_data, self._scan_interval
-            )
-        self._entities.append(update_callback)
 
-    @callback
-    def async_remove_hub_entity(self, update_callback):
-        """Remove data update."""
-        self._entities.remove(update_callback)
-
-        if not self._entities:
-            """stop the interval timer upon removal of last entity"""
-            self._unsub_interval_method()
-            self._unsub_interval_method = None
-            self.close()
-
-    @toggle_busy
-    async def async_refresh_modbus_data(self, _now: Optional[int] = None) -> dict:
-        """Time to update."""
-
-        if not self._entities:
-            return False
-
-        try:
-            update_result = await self._client.read_inverter_data()
-        except Exception as e:
-            _LOGGER.exception("Error reading inverter data", exc_info=True)
-            update_result = False
-
-        try:
-            update_result = await self._client.read_inverter_status_data()
-        except Exception as e:
-            _LOGGER.exception("Error reading inverter status data", exc_info=True)
-            update_result = False
-
-        try:
-            update_result = await self._client.read_inverter_model_settings_data()
-        except Exception as e:
-            _LOGGER.exception("Error reading inverter model settings data", exc_info=True)
-            update_result = False
-
-        try:
-            update_result = await self._client.read_inverter_controls_data()
-        except Exception as e:
-            _LOGGER.exception("Error reading inverter model settings data", exc_info=True)
-            update_result = False
-
-        if self._client.meter_configured:
-            for meter_address in self._client._meter_unit_ids:
-                try:
-                    update_result = await self._client.read_meter_data(meter_prefix="m1_", unit_id=meter_address)
-                except Exception as e:
-                    _LOGGER.error(f"Error reading meter data {meter_address}.", exc_info=True)
-                    #update_result = False
-
-        if self._client.mppt_configured:
-            try:
-                update_result = await self._client.read_mppt_data()
-            except Exception as e:
-                _LOGGER.exception("Error reading mptt data", exc_info=True)
-                update_result = False
-
-        # Read export limit data
-        try:
-            update_result = await self._client.read_export_limit_data()
-        except Exception as e:
-            _LOGGER.exception("Error reading export limit data", exc_info=True)
-            update_result = False
-
-        if self._client.storage_configured:
-            try:
-                update_result = await self._client.read_inverter_storage_data()
-            except Exception as e:
-                _LOGGER.exception("Error reading inverter storage data", exc_info=True)
-                update_result = False
-
-
-        if update_result:
-            for update_callback in self._entities:
-                update_callback()
 
     @toggle_busy
     async def test_connection(self) -> bool:

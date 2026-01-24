@@ -1,59 +1,66 @@
 import logging
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.core import callback
 from .hub import Hub
 
 _LOGGER = logging.getLogger(__name__)
 
-class FroniusModbusBaseEntity():
-    """ """
+
+class FroniusModbusBaseEntity(CoordinatorEntity):
+    """Base entity for Fronius Modbus devices."""
     _key = None
     _options_dict = None
 
-    def __init__(self, platform_name, hub, device_info, name, key, device_class=None, state_class=None, unit=None, icon=None, entity_category=None, options=None, min=None, max=None, native_step=None, mode=None):
-        self._platform_name = platform_name
-        self._hub:Hub = hub
+    def __init__(self, coordinator, device_info, name, key, device_class=None, state_class=None, unit=None, icon=None, entity_category=None, options=None, min=None, max=None, native_step=None, mode=None):
+        """Initialize the entity."""
+        super().__init__(coordinator)
         self._key = key
         self._name = name
         self._unit_of_measurement = unit
         self._icon = icon
         self._device_info = device_info
-        if not device_class is None:
+
+        if device_class is not None:
             self._attr_device_class = device_class
-        if not state_class is None:
+        if state_class is not None:
             self._attr_state_class = state_class
-        if not entity_category is None:
+        if entity_category is not None:
             self._attr_entity_category = entity_category
-        if not options is None:
+        if options is not None:
             self._options_dict = options
             self._attr_options = list(options.values())
-        if not min is None:
+        if min is not None:
             self._attr_native_min_value = min
-        if not max is None:
+        if max is not None:
             self._attr_native_max_value = max
-        if not native_step is None:
+        if native_step is not None:
             self._attr_native_step = native_step
-        if not mode is None:
+        if mode is not None:
             self._attr_mode = mode
 
         self._attr_has_entity_name = True
         self._attr_name = name
-        self._attr_unique_id = f"{self._platform_name}_{self._key}"
+        self._attr_unique_id = f"{coordinator.name}_{key}"
         self._attr_device_info = device_info
 
-    async def async_added_to_hass(self):
-        """Register callbacks."""
-        self._hub.async_add_hub_entity(self._modbus_data_updated)
+    @property
+    def available(self) -> bool:
+        """Return if entity is available."""
+        return self.coordinator.last_update_success
 
-    async def async_will_remove_from_hass(self) -> None:
-        self._hub.async_remove_hub_entity(self._modbus_data_updated)
+    async def async_added_to_hass(self) -> None:
+        """When entity is added to hass."""
+        await super().async_added_to_hass()
+        self._handle_coordinator_update()
 
     @callback
-    def _modbus_data_updated(self):
+    def _handle_coordinator_update(self) -> None:
+        """Handle updated data from the coordinator."""
         self.async_write_ha_state()
 
     @property
     def should_poll(self) -> bool:
-        """Data is delivered by the hub"""
+        """Data is delivered by the coordinator."""
         return False
 
     @property

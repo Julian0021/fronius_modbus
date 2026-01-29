@@ -90,7 +90,7 @@ Note to change the mode first then set controls active in that mode.
 | Discharge Limit  | Ignored (100%) | Used | Ignored (0%) | Ignored (0%) | Used |
 | PV Charge and Discharge Limit  | Used | Used | Ignored (0%) | Ignored (0%) | Used |
 | Charge from Grid | Ignored | Ignored | Used | Ignored (0%) | Used |
-| Charge from Grid | Ignored | Ignored | Ignored (0%) | Used | Used |
+| Discharge to Grid | Ignored | Ignored | Ignored (0%) | Used | Used |
 | Block discharging | Used | Ignored (0%) | Ignored (0%) | Ignored (0%) | Used |
 | Block charging | Ignored (0%) | Used | Ignored (0%) | Ignored (0%) | Used |
 

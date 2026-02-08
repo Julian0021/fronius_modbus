@@ -77,7 +77,7 @@ async def validate_input(hass: HomeAssistant, data: dict) -> dict[str, Any]:
     try:
         hub = Hub(hass, data[CONF_NAME], data[CONF_HOST], data[CONF_PORT], data[CONF_INVERTER_UNIT_ID], meter_addresses, data[CONF_SCAN_INTERVAL])
 
-        await hub.init_data()
+        await hub.init_data(setup_coordinator=False)
     except Exception as e:
         # If there is an error, raise an exception to notify HA that there was a
         # problem. The UI will also show there was a problem

@@ -16,7 +16,7 @@ CONF_INVERTER_UNIT_ID = 'inverter_modbus_unit_id'
 CONF_METER_UNIT_ID = 'meter_modbus_unit_id'
 ATTR_MANUFACTURER = 'Fronius'
 SUPPORTED_MANUFACTURERS = ['Fronius']
-SUPPORTED_MODELS = ['Primo GEN24', 'Symo GEN24']
+SUPPORTED_MODELS = ['Primo GEN24', 'Symo GEN24', 'Verto']
 
 STORAGE_EXT_CONTROL_MODE = {
     0: 'Auto',

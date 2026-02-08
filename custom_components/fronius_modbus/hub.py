@@ -10,6 +10,7 @@ from packaging import version as pkg_version
 from homeassistant.core import callback
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.core import HomeAssistant
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .froniusmodbusclient import FroniusModbusClient
@@ -25,14 +26,31 @@ _LOGGER = logging.getLogger(__name__)
 class FroniusCoordinator(DataUpdateCoordinator):
     """Coordinator for Fronius Modbus data updates."""
 
-    def __init__(self, hass: HomeAssistant, hub: Hub) -> None:
+    def __init__(self, hass: HomeAssistant, hub: Hub, config_entry: ConfigEntry | None = None) -> None:
         """Initialize the coordinator."""
-        super().__init__(
-            hass,
-            _LOGGER,
-            name=f"{DOMAIN}_{hub._id}_coordinator",
-            update_interval=hub._scan_interval,
-        )
+        if config_entry is not None:
+            try:
+                super().__init__(
+                    hass,
+                    _LOGGER,
+                    name=f"{DOMAIN}_{hub._id}_coordinator",
+                    update_interval=hub._scan_interval,
+                    config_entry=config_entry,
+                )
+            except TypeError:
+                super().__init__(
+                    hass,
+                    _LOGGER,
+                    name=f"{DOMAIN}_{hub._id}_coordinator",
+                    update_interval=hub._scan_interval,
+                )
+        else:
+            super().__init__(
+                hass,
+                _LOGGER,
+                name=f"{DOMAIN}_{hub._id}_coordinator",
+                update_interval=hub._scan_interval,
+            )
         self.hub = hub
 
     async def _async_update_data(self) -> dict:
@@ -112,7 +130,13 @@ class Hub:
             return result
         return wrapper
 
-    async def init_data(self, close = False, read_status_data = False):
+    async def init_data(
+        self,
+        close = False,
+        read_status_data = False,
+        config_entry: ConfigEntry | None = None,
+        setup_coordinator: bool = True,
+    ):
         """Initialize data and coordinator."""
         await self._hass.async_add_executor_job(self.check_pymodbus_version)
         result = await self._client.init_data()
@@ -120,9 +144,14 @@ class Hub:
         if self.storage_configured:
             result : bool = await self._hass.async_add_executor_job(self._client.get_json_storage_info)
 
-        # Initialize the coordinator
-        self.coordinator = FroniusCoordinator(self._hass, self)
-        await self.coordinator.async_config_entry_first_refresh()
+        if setup_coordinator:
+            # Initialize the coordinator. The config-entry first refresh API
+            # is only valid when a config entry is available.
+            self.coordinator = FroniusCoordinator(self._hass, self, config_entry=config_entry)
+            if config_entry is not None:
+                await self.coordinator.async_config_entry_first_refresh()
+            else:
+                await self.coordinator.async_refresh()
 
         return
 

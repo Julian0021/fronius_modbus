@@ -38,8 +38,23 @@ async def async_setup_entry(
 
     entities = []
     coordinator = hub.coordinator
+    raw_mppt_module_count = hub.data.get('mppt_module_count', 2)
+    try:
+        mppt_module_count = int(raw_mppt_module_count)
+    except (TypeError, ValueError):
+        mppt_module_count = 2
 
-    for sensor_info in INVERTER_SENSOR_TYPES.values():
+    def is_enabled_inverter_sensor(sensor_key: str) -> bool:
+        if sensor_key.startswith('mppt4_'):
+            return mppt_module_count >= 4
+        if sensor_key.startswith('mppt3_'):
+            return mppt_module_count >= 3
+        return True
+
+    for sensor_key, sensor_info in INVERTER_SENSOR_TYPES.items():
+        if not is_enabled_inverter_sensor(sensor_key):
+            continue
+
         sensor = FroniusModbusSensor(
             coordinator=coordinator,
             device_info=hub.device_info_inverter,

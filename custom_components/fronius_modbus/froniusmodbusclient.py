@@ -372,26 +372,21 @@ class FroniusModbusClient(ExtModbusClient):
             return value
 
     async def read_mppt_data(self):
-        mppt_read_address = MPPT_ADDRESS
-        header_regs = await self.get_registers(unit_id=self._inverter_unit_id, address=MPPT_ADDRESS, count=2)
+        # SunSpec model 160 header (confirmed in workspace maps):
+        # ID at 40254 and L at 40255.
+        header_regs = await self.get_registers(unit_id=self._inverter_unit_id, address=MPPT_ADDRESS - 1, count=2)
         if header_regs is None:
             return False
 
-        mppt_model_length = self._client.convert_from_registers(header_regs[0:1], data_type=self._client.DATATYPE.UINT16)
+        mppt_model_id = self._client.convert_from_registers(header_regs[0:1], data_type=self._client.DATATYPE.UINT16)
+        mppt_model_length = self._client.convert_from_registers(header_regs[1:2], data_type=self._client.DATATYPE.UINT16)
+        if not self.is_numeric(mppt_model_id) or int(mppt_model_id) != 160:
+            return False
         if not self.is_numeric(mppt_model_length) or int(mppt_model_length) < 20 or int(mppt_model_length) > 200:
-            alt_header_regs = await self.get_registers(unit_id=self._inverter_unit_id, address=MPPT_ADDRESS - 1, count=2)
-            if alt_header_regs is None:
-                return False
-            alt_mppt_model_length = self._client.convert_from_registers(
-                alt_header_regs[0:1],
-                data_type=self._client.DATATYPE.UINT16,
-            )
-            if not self.is_numeric(alt_mppt_model_length) or int(alt_mppt_model_length) < 20 or int(alt_mppt_model_length) > 200:
-                return False
-            mppt_model_length = alt_mppt_model_length
-            mppt_read_address = MPPT_ADDRESS - 1
+            return False
 
         self._update_storage_base_address(int(mppt_model_length))
+        self.data['mppt_model_id'] = int(mppt_model_id)
         self.data['mppt_model_length'] = int(mppt_model_length)
 
         storage_model_header = await self.get_registers(
@@ -408,7 +403,8 @@ class FroniusModbusClient(ExtModbusClient):
                 self.storage_configured = True
 
         model_register_count = int(mppt_model_length) + 1
-        regs = await self.get_registers(unit_id=self._inverter_unit_id, address=mppt_read_address, count=model_register_count)
+        # Read from MPPT_ADDRESS (L at 40255) through the entire model payload.
+        regs = await self.get_registers(unit_id=self._inverter_unit_id, address=MPPT_ADDRESS, count=model_register_count)
         if regs is None:
             return False
 
@@ -424,8 +420,10 @@ class FroniusModbusClient(ExtModbusClient):
         if not self.is_numeric(reported_module_count) or int(reported_module_count) <= 0:
             return False
 
-        max_modules_by_length = (model_limit - 2) // 20
-        module_count = min(int(reported_module_count), int(max_modules_by_length))
+        # Model-160 module block is 20 registers per module and starts after the
+        # first 8 data registers.
+        max_modules_by_length = (int(mppt_model_length) - 8) // 20
+        module_count = min(int(reported_module_count), int(max_modules_by_length), 4)
         if module_count <= 0:
             return False
 
@@ -477,14 +475,15 @@ class FroniusModbusClient(ExtModbusClient):
             self.data[f'module{module_id}_power'] = module_power[module_id]
             self.data[f'module{module_id}_lfte'] = module_lfte[module_id]
 
-        self.data['mppt1_current'] = module_current.get(1)
-        self.data['mppt2_current'] = module_current.get(2)
-        self.data['mppt1_voltage'] = module_voltage.get(1)
-        self.data['mppt2_voltage'] = module_voltage.get(2)
-        self.data['mppt1_power'] = module_power.get(1)
-        self.data['mppt2_power'] = module_power.get(2)
-        self.data['mppt1_lfte'] = self.protect_lfte('mppt1_lfte', module_lfte.get(1))
-        self.data['mppt2_lfte'] = self.protect_lfte('mppt2_lfte', module_lfte.get(2))
+        for module_id in range(1, 5):
+            self.data[f'mppt{module_id}_current'] = module_current.get(module_id)
+            self.data[f'mppt{module_id}_voltage'] = module_voltage.get(module_id)
+            self.data[f'mppt{module_id}_power'] = module_power.get(module_id)
+            lfte_key = f'mppt{module_id}_lfte'
+            if module_id <= module_count:
+                self.data[lfte_key] = self.protect_lfte(lfte_key, module_lfte.get(module_id))
+            else:
+                self.data[lfte_key] = None
 
         storage_charge_module = None
         storage_discharge_module = None
@@ -497,42 +496,37 @@ class FroniusModbusClient(ExtModbusClient):
             elif normalized.startswith("STCHA"):
                 storage_charge_module = module_id
 
-        # If labels are unavailable, use the last two channels as storage channels.
-        if self.storage_configured and not (storage_charge_module and storage_discharge_module) and module_count >= 4:
-            storage_charge_module = module_count - 1
-            storage_discharge_module = module_count
-
         if self.storage_configured and storage_charge_module and storage_discharge_module:
             self.data['storage_charge_module'] = storage_charge_module
             self.data['storage_discharge_module'] = storage_discharge_module
 
             storage_charge_power = module_power.get(storage_charge_module)
             storage_discharge_power = module_power.get(storage_discharge_module)
-            self.data['mppt3_power'] = storage_charge_power
-            self.data['mppt4_power'] = storage_discharge_power
-            self.data['mppt3_lfte'] = self.protect_lfte('mppt3_lfte', module_lfte.get(storage_charge_module))
-            self.data['mppt4_lfte'] = self.protect_lfte('mppt4_lfte', module_lfte.get(storage_discharge_module))
+            self.data['storage_charge_power'] = storage_charge_power
+            self.data['storage_discharge_power'] = storage_discharge_power
+            self.data['storage_charge_lfte'] = self.protect_lfte('storage_charge_lfte', module_lfte.get(storage_charge_module))
+            self.data['storage_discharge_lfte'] = self.protect_lfte('storage_discharge_lfte', module_lfte.get(storage_discharge_module))
 
             if self.is_numeric(storage_charge_power) and self.is_numeric(storage_discharge_power):
                 self.data['storage_power'] = round(storage_discharge_power - storage_charge_power, 2)
             else:
                 self.data['storage_power'] = None
-        elif self.storage_configured:
-            self.data['mppt3_power'] = None
-            self.data['mppt4_power'] = None
-            self.data['mppt3_lfte'] = None
-            self.data['mppt4_lfte'] = None
+        else:
+            self.data['storage_charge_module'] = None
+            self.data['storage_discharge_module'] = None
+            self.data['storage_charge_power'] = None
+            self.data['storage_discharge_power'] = None
+            self.data['storage_charge_lfte'] = None
+            self.data['storage_discharge_lfte'] = None
             self.data['storage_power'] = None
 
-        pv_modules = []
-        for module_id, label in module_labels.items():
-            if isinstance(label, str) and "MPPT" in label.upper():
-                pv_modules.append(module_id)
-        if not pv_modules:
-            if storage_charge_module and storage_discharge_module:
-                pv_modules = [module_id for module_id in range(1, module_count + 1) if module_id not in [storage_charge_module, storage_discharge_module]]
-            else:
-                pv_modules = list(range(1, module_count + 1))
+        pv_modules = list(range(1, module_count + 1))
+        if self.storage_configured and storage_charge_module and storage_discharge_module:
+            pv_modules = [
+                module_id
+                for module_id in pv_modules
+                if module_id not in [storage_charge_module, storage_discharge_module]
+            ]
 
         pv_values = [module_power.get(module_id) for module_id in pv_modules if self.is_numeric(module_power.get(module_id))]
         self.data['pv_power'] = round(sum(pv_values), 2) if pv_values else None

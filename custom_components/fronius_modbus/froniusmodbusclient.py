@@ -372,79 +372,24 @@ class FroniusModbusClient(ExtModbusClient):
             return value
 
     async def read_mppt_data(self):
-        def is_valid_model_length(value) -> bool:
-            return self.is_numeric(value) and 20 <= int(value) <= 200
-
-        def is_valid_sf(value) -> bool:
-            return self.is_numeric(value) and -10 <= int(value) <= 10
-
-        # Try all plausible address variants and keep the first one that produces
-        # sane scale factors and module count.
-        header_candidates = []
-        left_header = await self.get_registers(
-            unit_id=self._inverter_unit_id,
-            address=MPPT_ADDRESS - 1,
-            count=2,
-        )
-        if left_header is not None and len(left_header) == 2:
-            left_a = self._client.convert_from_registers(left_header[0:1], data_type=self._client.DATATYPE.UINT16)
-            left_b = self._client.convert_from_registers(left_header[1:2], data_type=self._client.DATATYPE.UINT16)
-            # [ID, L]
-            if self.is_numeric(left_a) and int(left_a) == 160 and is_valid_model_length(left_b):
-                header_candidates.append((int(left_b), MPPT_ADDRESS))
-            # [L, ...]
-            if is_valid_model_length(left_a):
-                header_candidates.append((int(left_a), MPPT_ADDRESS - 1))
-
-        center_header = await self.get_registers(
-            unit_id=self._inverter_unit_id,
-            address=MPPT_ADDRESS,
-            count=2,
-        )
-        if center_header is not None and len(center_header) == 2:
-            center_a = self._client.convert_from_registers(center_header[0:1], data_type=self._client.DATATYPE.UINT16)
-            center_b = self._client.convert_from_registers(center_header[1:2], data_type=self._client.DATATYPE.UINT16)
-            # [L, ...]
-            if is_valid_model_length(center_a):
-                header_candidates.append((int(center_a), MPPT_ADDRESS))
-            # [ID, L]
-            if self.is_numeric(center_a) and int(center_a) == 160 and is_valid_model_length(center_b):
-                header_candidates.append((int(center_b), MPPT_ADDRESS + 1))
-
-        # De-duplicate while preserving order.
-        deduped_candidates = list(dict.fromkeys(header_candidates))
-
-        mppt_model_length = None
-        mppt_read_address = None
-        regs = None
-        for model_length_candidate, read_address_candidate in deduped_candidates:
-            model_register_count = int(model_length_candidate) + 1
-            candidate_regs = await self.get_registers(
-                unit_id=self._inverter_unit_id,
-                address=read_address_candidate,
-                count=model_register_count,
-            )
-            if candidate_regs is None or len(candidate_regs) < 8:
-                continue
-
-            dca_sf = self._client.convert_from_registers(candidate_regs[1:2], data_type=self._client.DATATYPE.INT16)
-            dcv_sf = self._client.convert_from_registers(candidate_regs[2:3], data_type=self._client.DATATYPE.INT16)
-            dcw_sf = self._client.convert_from_registers(candidate_regs[3:4], data_type=self._client.DATATYPE.INT16)
-            dcwh_sf = self._client.convert_from_registers(candidate_regs[4:5], data_type=self._client.DATATYPE.INT16)
-            n_modules = self._client.convert_from_registers(candidate_regs[7:8], data_type=self._client.DATATYPE.UINT16)
-
-            if not all(is_valid_sf(sf) for sf in [dca_sf, dcv_sf, dcw_sf, dcwh_sf]):
-                continue
-            if not self.is_numeric(n_modules) or int(n_modules) <= 0 or int(n_modules) > 8:
-                continue
-
-            mppt_model_length = int(model_length_candidate)
-            mppt_read_address = read_address_candidate
-            regs = candidate_regs
-            break
-
-        if regs is None or mppt_model_length is None or mppt_read_address is None:
+        mppt_read_address = MPPT_ADDRESS
+        header_regs = await self.get_registers(unit_id=self._inverter_unit_id, address=MPPT_ADDRESS, count=2)
+        if header_regs is None:
             return False
+
+        mppt_model_length = self._client.convert_from_registers(header_regs[0:1], data_type=self._client.DATATYPE.UINT16)
+        if not self.is_numeric(mppt_model_length) or int(mppt_model_length) < 20 or int(mppt_model_length) > 200:
+            alt_header_regs = await self.get_registers(unit_id=self._inverter_unit_id, address=MPPT_ADDRESS - 1, count=2)
+            if alt_header_regs is None:
+                return False
+            alt_mppt_model_length = self._client.convert_from_registers(
+                alt_header_regs[0:1],
+                data_type=self._client.DATATYPE.UINT16,
+            )
+            if not self.is_numeric(alt_mppt_model_length) or int(alt_mppt_model_length) < 20 or int(alt_mppt_model_length) > 200:
+                return False
+            mppt_model_length = alt_mppt_model_length
+            mppt_read_address = MPPT_ADDRESS - 1
 
         self._update_storage_base_address(int(mppt_model_length))
         self.data['mppt_model_length'] = int(mppt_model_length)
@@ -461,6 +406,11 @@ class FroniusModbusClient(ExtModbusClient):
             self.data['storage_model_length'] = storage_model_length
             if storage_model_id == 124 and storage_model_length == 24:
                 self.storage_configured = True
+
+        model_register_count = int(mppt_model_length) + 1
+        regs = await self.get_registers(unit_id=self._inverter_unit_id, address=mppt_read_address, count=model_register_count)
+        if regs is None:
+            return False
 
         model_limit = len(regs)
         if model_limit < 8:

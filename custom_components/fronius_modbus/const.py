@@ -62,9 +62,17 @@ INVERTER_SENSOR_TYPES = {
     'mppt2_current': ['MPPT2 current', 'mppt2_current', SensorDeviceClass.CURRENT, SensorStateClass.MEASUREMENT, 'A', 'mdi:current-dc', None],
     'mppt2_voltage': ['MPPT2 voltage', 'mppt2_voltage', SensorDeviceClass.VOLTAGE, SensorStateClass.MEASUREMENT, 'V', 'mdi:current-dc', None],
     'mppt2_power': ['MPPT2 power', 'mppt2_power', SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, 'W', 'mdi:solar-power', None],
+    'mppt3_current': ['MPPT3 current', 'mppt3_current', SensorDeviceClass.CURRENT, SensorStateClass.MEASUREMENT, 'A', 'mdi:current-dc', None],
+    'mppt3_voltage': ['MPPT3 voltage', 'mppt3_voltage', SensorDeviceClass.VOLTAGE, SensorStateClass.MEASUREMENT, 'V', 'mdi:current-dc', None],
+    'mppt3_power': ['MPPT3 power', 'mppt3_power', SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, 'W', 'mdi:solar-power', None],
+    'mppt4_current': ['MPPT4 current', 'mppt4_current', SensorDeviceClass.CURRENT, SensorStateClass.MEASUREMENT, 'A', 'mdi:current-dc', None],
+    'mppt4_voltage': ['MPPT4 voltage', 'mppt4_voltage', SensorDeviceClass.VOLTAGE, SensorStateClass.MEASUREMENT, 'V', 'mdi:current-dc', None],
+    'mppt4_power': ['MPPT4 power', 'mppt4_power', SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, 'W', 'mdi:solar-power', None],
     'pv_power': ['PV power', 'pv_power', SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, 'W', 'mdi:solar-power', None],
     'mppt1_lfte': ['MPPT1 lifetime energy', 'mppt1_lfte', SensorDeviceClass.ENERGY, SensorStateClass.TOTAL_INCREASING, 'Wh', 'mdi:solar-panel', None],
     'mppt2_lfte': ['MPPT2 lifetime energy', 'mppt2_lfte', SensorDeviceClass.ENERGY, SensorStateClass.TOTAL_INCREASING, 'Wh', 'mdi:solar-panel', None],
+    'mppt3_lfte': ['MPPT3 lifetime energy', 'mppt3_lfte', SensorDeviceClass.ENERGY, SensorStateClass.TOTAL_INCREASING, 'Wh', 'mdi:solar-panel', None],
+    'mppt4_lfte': ['MPPT4 lifetime energy', 'mppt4_lfte', SensorDeviceClass.ENERGY, SensorStateClass.TOTAL_INCREASING, 'Wh', 'mdi:solar-panel', None],
     'load': ['Load', 'load', SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, 'W', 'mdi:lightning-bolt', None],
     'pv_connection': ['PV connection', 'pv_connection', None, None, None, None, EntityCategory.DIAGNOSTIC],
     'ecp_connection': ['Electrical connection', 'ecp_connection', None, None, None, None, EntityCategory.DIAGNOSTIC],
@@ -100,12 +108,12 @@ INVERTER_SYMO_SENSOR_TYPES = {
 }
 
 INVERTER_STORAGE_SENSOR_TYPES = {
-    'mppt3_power': ['Storage charging power', 'mppt3_power', SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, 'W', 'mdi:home-battery', None],
-    'mppt4_power': ['Storage discharging power', 'mppt4_power', SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, 'W', 'mdi:home-battery', None],
+    'storage_charge_power': ['Storage charging power', 'storage_charge_power', SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, 'W', 'mdi:home-battery', None],
+    'storage_discharge_power': ['Storage discharging power', 'storage_discharge_power', SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, 'W', 'mdi:home-battery', None],
     'storage_connection': ['Storage connection', 'storage_connection', None, None, None, None, EntityCategory.DIAGNOSTIC],
     'storage_power': ['Storage power', 'storage_power', SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, 'W', 'mdi:home-battery', None],
-    'mppt3_lfte': ['Storage charging lifetime energy', 'mppt3_lfte', SensorDeviceClass.ENERGY, SensorStateClass.TOTAL_INCREASING, 'Wh', 'mdi:home-battery', None],
-    'mppt4_lfte': ['Storage discharging lifetime energy', 'mppt4_lfte', SensorDeviceClass.ENERGY, SensorStateClass.TOTAL_INCREASING, 'Wh', 'mdi:home-battery', None],
+    'storage_charge_lfte': ['Storage charging lifetime energy', 'storage_charge_lfte', SensorDeviceClass.ENERGY, SensorStateClass.TOTAL_INCREASING, 'Wh', 'mdi:home-battery', None],
+    'storage_discharge_lfte': ['Storage discharging lifetime energy', 'storage_discharge_lfte', SensorDeviceClass.ENERGY, SensorStateClass.TOTAL_INCREASING, 'Wh', 'mdi:home-battery', None],
 }
 
 

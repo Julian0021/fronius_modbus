@@ -477,14 +477,16 @@ class FroniusModbusClient(ExtModbusClient):
             self.data[f'module{module_id}_power'] = module_power[module_id]
             self.data[f'module{module_id}_lfte'] = module_lfte[module_id]
 
-        self.data['mppt1_current'] = module_current.get(1)
-        self.data['mppt2_current'] = module_current.get(2)
-        self.data['mppt1_voltage'] = module_voltage.get(1)
-        self.data['mppt2_voltage'] = module_voltage.get(2)
-        self.data['mppt1_power'] = module_power.get(1)
-        self.data['mppt2_power'] = module_power.get(2)
-        self.data['mppt1_lfte'] = self.protect_lfte('mppt1_lfte', module_lfte.get(1))
-        self.data['mppt2_lfte'] = self.protect_lfte('mppt2_lfte', module_lfte.get(2))
+        for module_id in range(1, 5):
+            self.data[f'mppt{module_id}_current'] = module_current.get(module_id)
+            self.data[f'mppt{module_id}_voltage'] = module_voltage.get(module_id)
+            self.data[f'mppt{module_id}_power'] = module_power.get(module_id)
+
+            lfte_key = f'mppt{module_id}_lfte'
+            if module_id <= module_count:
+                self.data[lfte_key] = self.protect_lfte(lfte_key, module_lfte.get(module_id))
+            else:
+                self.data[lfte_key] = None
 
         storage_charge_module = None
         storage_discharge_module = None
@@ -497,31 +499,28 @@ class FroniusModbusClient(ExtModbusClient):
             elif normalized.startswith("STCHA"):
                 storage_charge_module = module_id
 
-        # If labels are unavailable, use the last two channels as storage channels.
-        if self.storage_configured and not (storage_charge_module and storage_discharge_module) and module_count >= 4:
-            storage_charge_module = module_count - 1
-            storage_discharge_module = module_count
-
         if self.storage_configured and storage_charge_module and storage_discharge_module:
             self.data['storage_charge_module'] = storage_charge_module
             self.data['storage_discharge_module'] = storage_discharge_module
 
             storage_charge_power = module_power.get(storage_charge_module)
             storage_discharge_power = module_power.get(storage_discharge_module)
-            self.data['mppt3_power'] = storage_charge_power
-            self.data['mppt4_power'] = storage_discharge_power
-            self.data['mppt3_lfte'] = self.protect_lfte('mppt3_lfte', module_lfte.get(storage_charge_module))
-            self.data['mppt4_lfte'] = self.protect_lfte('mppt4_lfte', module_lfte.get(storage_discharge_module))
+            self.data['storage_charge_power'] = storage_charge_power
+            self.data['storage_discharge_power'] = storage_discharge_power
+            self.data['storage_charge_lfte'] = self.protect_lfte('storage_charge_lfte', module_lfte.get(storage_charge_module))
+            self.data['storage_discharge_lfte'] = self.protect_lfte('storage_discharge_lfte', module_lfte.get(storage_discharge_module))
 
             if self.is_numeric(storage_charge_power) and self.is_numeric(storage_discharge_power):
                 self.data['storage_power'] = round(storage_discharge_power - storage_charge_power, 2)
             else:
                 self.data['storage_power'] = None
-        elif self.storage_configured:
-            self.data['mppt3_power'] = None
-            self.data['mppt4_power'] = None
-            self.data['mppt3_lfte'] = None
-            self.data['mppt4_lfte'] = None
+        else:
+            self.data['storage_charge_module'] = None
+            self.data['storage_discharge_module'] = None
+            self.data['storage_charge_power'] = None
+            self.data['storage_discharge_power'] = None
+            self.data['storage_charge_lfte'] = None
+            self.data['storage_discharge_lfte'] = None
             self.data['storage_power'] = None
 
         pv_modules = []

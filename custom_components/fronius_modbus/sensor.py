@@ -79,7 +79,7 @@ async def async_setup_entry(
                 sensor = FroniusModbusSensor(
                     coordinator=coordinator,
                     device_info=hub.device_info_inverter,
-                    name=f'mppt module {module_idx} {sensor_info[0]}',
+                    name=f'MPPT module {module_idx} {sensor_info[0]}',
                     key=key,
                     device_class=sensor_info[2],
                     state_class=sensor_info[3],

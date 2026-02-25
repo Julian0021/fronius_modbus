@@ -83,6 +83,59 @@ class FroniusModbusClient(ExtModbusClient):
     def _storage_register_address(self, offset: int) -> int:
         return self._storage_address + offset
 
+    def _get_export_limit_rate_sf(self) -> Optional[int]:
+        value = self.data.get("export_limit_rate_sf")
+        if not self.is_numeric(value):
+            return None
+        rate_sf = int(value)
+        if rate_sf < -6 or rate_sf > 6:
+            _LOGGER.error("Invalid export limit scale factor: %s", rate_sf)
+            return None
+        return rate_sf
+
+    def _get_inverter_max_power_w(self) -> Optional[float]:
+        value = self.data.get("max_power")
+        if not self.is_numeric(value):
+            return None
+        max_power_w = float(value)
+        if max_power_w <= 0:
+            return None
+        return max_power_w
+
+    def _export_limit_raw_to_percent(self, raw_value: int) -> Optional[float]:
+        rate_sf = self._get_export_limit_rate_sf()
+        if rate_sf is None or not self.is_numeric(raw_value):
+            return None
+
+        percent = float(raw_value) * (10 ** rate_sf)
+        if percent < 0 or percent > 100:
+            _LOGGER.error("Export limit percent out of range: raw=%s sf=%s pct=%s", raw_value, rate_sf, percent)
+            return None
+        return percent
+
+    def _export_limit_raw_to_watts(self, raw_value: int) -> Optional[int]:
+        percent = self._export_limit_raw_to_percent(raw_value)
+        max_power_w = self._get_inverter_max_power_w()
+        if percent is None or max_power_w is None:
+            return None
+        return int(round(max_power_w * percent / 100.0))
+
+    def _export_limit_watts_to_raw(self, watts: float) -> Optional[int]:
+        if not self.is_numeric(watts):
+            return None
+
+        max_power_w = self._get_inverter_max_power_w()
+        rate_sf = self._get_export_limit_rate_sf()
+        if max_power_w is None or rate_sf is None:
+            return None
+
+        clamped_watts = min(max(float(watts), 0.0), max_power_w)
+        percent = (clamped_watts / max_power_w) * 100.0
+        raw_unclamped = percent / (10 ** rate_sf)
+        raw_max = int(round(100.0 / (10 ** rate_sf)))
+        raw_value = int(round(raw_unclamped))
+        return max(0, min(raw_max, raw_value))
+
     def _sanitize_mppt_u16(self, value: Optional[int]) -> Optional[int]:
         if not self.is_numeric(value):
             return None
@@ -426,11 +479,13 @@ class FroniusModbusClient(ExtModbusClient):
         WMaxLim_Ena = self._client.convert_from_registers(regs[7:8], data_type = self._client.DATATYPE.UINT16)
         OutPFSet_Ena = self._client.convert_from_registers(regs[12:13], data_type = self._client.DATATYPE.UINT16)
         VArPct_Ena = self._client.convert_from_registers(regs[20:21], data_type = self._client.DATATYPE.INT16)
+        WMaxLimPct_SF = self._client.convert_from_registers(regs[21:22], data_type = self._client.DATATYPE.INT16)
 
         self.data['Conn'] = self._map_value(CONTROL_STATUS, Conn, 'connection control')
         self.data['WMaxLim_Ena'] = self._map_value(CONTROL_STATUS, WMaxLim_Ena, 'throttle control')
         self.data['OutPFSet_Ena'] = self._map_value(CONTROL_STATUS, OutPFSet_Ena, 'fixed power factor')
         self.data['VArPct_Ena'] = self._map_value(CONTROL_STATUS, VArPct_Ena, 'VAr control')
+        self.data['export_limit_rate_sf'] = WMaxLimPct_SF
 
         return True
 
@@ -830,9 +885,13 @@ class FroniusModbusClient(ExtModbusClient):
         # Read export limit rate register (40232)
         rate_regs = await self.get_registers(unit_id=self._inverter_unit_id, address=EXPORT_LIMIT_RATE_ADDRESS, count=1)
         if rate_regs is not None:
-            export_limit_rate = self._client.convert_from_registers(rate_regs[0:1], data_type=self._client.DATATYPE.UINT16)
-            self.data['export_limit_rate'] = export_limit_rate
+            export_limit_rate_raw = self._client.convert_from_registers(rate_regs[0:1], data_type=self._client.DATATYPE.UINT16)
+            self.data['export_limit_rate_raw'] = export_limit_rate_raw
+            self.data['export_limit_rate_pct'] = self._export_limit_raw_to_percent(export_limit_rate_raw)
+            self.data['export_limit_rate'] = self._export_limit_raw_to_watts(export_limit_rate_raw)
         else:
+            self.data['export_limit_rate_raw'] = None
+            self.data['export_limit_rate_pct'] = None
             self.data['export_limit_rate'] = None
 
         # Read export limit enable register (40236)
@@ -1020,14 +1079,17 @@ class FroniusModbusClient(ExtModbusClient):
 
 
     async def set_export_limit_rate(self, rate):
-        """Set export limit rate (100-10000, where 10000=100%, minimum 1%)"""
-        if rate < 100:
-            rate = 100
-        elif rate > 10000:
-            rate = 10000
-        await self.write_registers(unit_id=self._inverter_unit_id, address=EXPORT_LIMIT_RATE_ADDRESS, payload=[int(rate)])
-        self.data['export_limit_rate'] = rate
-        _LOGGER.info(f"Set export limit rate to {rate}")
+        """Set export limit rate in watts and write WMaxLimPct raw value."""
+        raw_rate = self._export_limit_watts_to_raw(rate)
+        if raw_rate is None:
+            _LOGGER.error("Cannot set export limit rate, missing max power or scale factor")
+            return
+
+        await self.write_registers(unit_id=self._inverter_unit_id, address=EXPORT_LIMIT_RATE_ADDRESS, payload=[int(raw_rate)])
+        self.data['export_limit_rate_raw'] = raw_rate
+        self.data['export_limit_rate_pct'] = self._export_limit_raw_to_percent(raw_rate)
+        self.data['export_limit_rate'] = self._export_limit_raw_to_watts(raw_rate)
+        _LOGGER.info("Set export limit rate to %s W (raw=%s)", self.data['export_limit_rate'], raw_rate)
 
     async def set_export_limit_enable(self, enable):
         """Enable/disable export limit (0=Disabled, 1=Enabled)"""
@@ -1038,12 +1100,16 @@ class FroniusModbusClient(ExtModbusClient):
 
     async def apply_export_limit(self, rate):
         """Apply export limit by first disabling, then setting rate, then enabling"""
+        if self._export_limit_watts_to_raw(rate) is None:
+            _LOGGER.error("Cannot apply export limit, missing max power or scale factor")
+            return
+
         await self.set_export_limit_enable(0)  # Disable first
         await asyncio.sleep(1.0)
-        await self.set_export_limit_rate(rate)  # Set new rate
+        await self.set_export_limit_rate(rate)  # Set new limit in watts
         await asyncio.sleep(1.0)
         await self.set_export_limit_enable(1)  # Enable with new rate
-        _LOGGER.info(f"Applied export limit: rate={rate}, enabled=1")
+        _LOGGER.info(f"Applied export limit: rate={rate} W, enabled=1")
 
     async def set_conn_status(self, enable):
         """Enable/disable inverter connection (0=Disconnected/Standby, 1=Connected/Normal)"""

@@ -44,7 +44,7 @@ STORAGE_NUMBER_TYPES = [
 ]
 
 INVERTER_NUMBER_TYPES = [
-    ['Export limit rate', 'export_limit_rate', {'min': 100, 'max': 10000, 'step': 10, 'mode':'box', 'unit': None}],
+    ['Export limit rate', 'export_limit_rate', {'min': 0, 'max': 50000, 'step': 10, 'mode':'box', 'unit': 'W', 'max_key': 'max_power'}],
 ]
 
 INVERTER_SELECT_TYPES = [
@@ -78,7 +78,7 @@ INVERTER_SENSOR_TYPES = {
     'VArPct_Ena': ['Limit VAr control', 'VArPct_Ena', None, None, None, None, EntityCategory.DIAGNOSTIC],
     'PhVphA': ['AC voltage L1-N', 'PhVphA', SensorDeviceClass.VOLTAGE, SensorStateClass.MEASUREMENT, 'V', 'mdi:lightning-bolt', None],
     'unit_id': ['Modbus ID', 'i_unit_id', None, None, None, None, EntityCategory.DIAGNOSTIC],
-    'export_limit_rate': ['Export limit rate', 'export_limit_rate', None, SensorStateClass.MEASUREMENT, None, 'mdi:chart-line', None],
+    'export_limit_rate': ['Export limit rate', 'export_limit_rate', SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, 'W', 'mdi:chart-line', None],
     'export_limit_enable': ['Export limit enabled', 'export_limit_enable', None, None, None, 'mdi:power-plug', EntityCategory.DIAGNOSTIC],
     'isolation_resistance': ['Isolation Resistance', 'isolation_resistance', None, SensorStateClass.MEASUREMENT, 'MΩ', 'mdi:omega', None],
 }

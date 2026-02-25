@@ -19,6 +19,7 @@ from . import HubConfigEntry
 from .const import (
     INVERTER_SENSOR_TYPES,
     INVERTER_SYMO_SENSOR_TYPES,
+    MPPT_MODULE_SENSOR_TYPES,
     INVERTER_STORAGE_SENSOR_TYPES,
     METER_SENSOR_TYPES,
     STORAGE_SENSOR_TYPES,
@@ -66,6 +67,27 @@ async def async_setup_entry(
             entity_category=sensor_info[6],
         )
         entities.append(sensor)
+
+    if hub._client.mppt_configured:
+        module_count = int(hub._client.mppt_module_count)
+        data = coordinator.data if isinstance(coordinator.data, dict) else {}
+        for module_idx in range(module_count):
+            for sensor_info in MPPT_MODULE_SENSOR_TYPES:
+                key = f'mppt_module_{module_idx}_{sensor_info[1]}'
+                if key not in data or data[key] is None:
+                    continue
+                sensor = FroniusModbusSensor(
+                    coordinator=coordinator,
+                    device_info=hub.device_info_inverter,
+                    name=f'mppt module {module_idx} {sensor_info[0]}',
+                    key=key,
+                    device_class=sensor_info[2],
+                    state_class=sensor_info[3],
+                    unit=sensor_info[4],
+                    icon=sensor_info[5],
+                    entity_category=sensor_info[6],
+                )
+                entities.append(sensor)
 
     if hub.meter_configured:
         meter_id = '1'
@@ -132,8 +154,5 @@ class FroniusModbusSensor(FroniusModbusBaseEntity, SensorEntity):
     @property
     def extra_state_attributes(self):
         return None
-
-
-
 
 

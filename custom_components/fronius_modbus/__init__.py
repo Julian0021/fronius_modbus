@@ -7,6 +7,7 @@ import logging
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.const import Platform
+from homeassistant.helpers import entity_registry as er
 
 from homeassistant.const import CONF_NAME, CONF_HOST, CONF_PORT, CONF_SCAN_INTERVAL
 from .const import (
@@ -25,6 +26,42 @@ PLATFORMS = [Platform.NUMBER, Platform.SELECT, Platform.SENSOR]
 
 type HubConfigEntry = ConfigEntry[hub.Hub]
 
+LEGACY_MPPT_ENTITY_KEYS = (
+    "mppt1_current",
+    "mppt1_voltage",
+    "mppt1_power",
+    "mppt1_lfte",
+    "mppt2_current",
+    "mppt2_voltage",
+    "mppt2_power",
+    "mppt2_lfte",
+    "mppt3_current",
+    "mppt3_voltage",
+    "mppt3_pv_power",
+    "mppt3_pv_lfte",
+    "mppt3_power",
+    "mppt4_power",
+    "mppt3_lfte",
+    "mppt4_lfte",
+)
+
+
+def _is_legacy_mppt_unique_id(unique_id: str) -> bool:
+    return any(unique_id.endswith(f"_{key}") for key in LEGACY_MPPT_ENTITY_KEYS)
+
+
+async def _async_remove_legacy_mppt_entities(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    registry = er.async_get(hass)
+    removed = 0
+    for entity_entry in er.async_entries_for_config_entry(registry, entry.entry_id):
+        unique_id = entity_entry.unique_id or ""
+        if _is_legacy_mppt_unique_id(unique_id):
+            registry.async_remove(entity_entry.entity_id)
+            removed += 1
+    if removed:
+        _LOGGER.info("Removed %s legacy MPPT entities", removed)
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: HubConfigEntry) -> bool:
     """Set up Fronius Modbus from a config entry."""
 
@@ -42,6 +79,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: HubConfigEntry) -> bool:
         meter_unit_ids = []
 
     _LOGGER.debug("Setup %s.%s", DOMAIN, name)
+
+    await _async_remove_legacy_mppt_entities(hass, entry)
 
     # Store an instance of the "connecting" class that does the work of speaking
     # with your actual devices.
@@ -73,4 +112,3 @@ async def reload_service_handler(service: ServiceCall) -> None:
     await async_reload_integration_platforms(hass, DOMAIN, PLATFORMS)
     _async_setup_shared_data(hass)
     await _async_process_config(hass, conf)    
-

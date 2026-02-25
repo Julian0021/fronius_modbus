@@ -88,7 +88,6 @@ MPPT_MODULE_SENSOR_TYPES = [
     ['DC voltage', 'dc_voltage', SensorDeviceClass.VOLTAGE, SensorStateClass.MEASUREMENT, 'V', 'mdi:lightning-bolt', None],
     ['DC power', 'dc_power', SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, 'W', 'mdi:solar-power', None],
     ['Lifetime energy', 'lifetime_energy', SensorDeviceClass.ENERGY, SensorStateClass.TOTAL_INCREASING, 'Wh', 'mdi:solar-panel', None],
-    ['Timestamp', 'timestamp', None, SensorStateClass.MEASUREMENT, 's', 'mdi:information-outline', None],
 ]
 
 INVERTER_SYMO_SENSOR_TYPES = {

@@ -2,7 +2,6 @@
 
 """BYD Battery Box Class"""
 
-import asyncio
 import logging
 from typing import Optional
 from .extmodbusclient import ExtModbusClient
@@ -1097,19 +1096,6 @@ class FroniusModbusClient(ExtModbusClient):
         await self.write_registers(unit_id=self._inverter_unit_id, address=EXPORT_LIMIT_ENABLE_ADDRESS, payload=[enable_value])
         self.data['export_limit_enable'] = enable_value
         _LOGGER.info(f"Set export limit enable to {enable_value}")
-
-    async def apply_export_limit(self, rate):
-        """Apply export limit by first disabling, then setting rate, then enabling"""
-        if self._export_limit_watts_to_raw(rate) is None:
-            _LOGGER.error("Cannot apply export limit, missing max power or scale factor")
-            return
-
-        await self.set_export_limit_enable(0)  # Disable first
-        await asyncio.sleep(1.0)
-        await self.set_export_limit_rate(rate)  # Set new limit in watts
-        await asyncio.sleep(1.0)
-        await self.set_export_limit_enable(1)  # Enable with new rate
-        _LOGGER.info(f"Applied export limit: rate={rate} W, enabled=1")
 
     async def set_conn_status(self, enable):
         """Enable/disable inverter connection (0=Disconnected/Standby, 1=Connected/Normal)"""

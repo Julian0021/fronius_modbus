@@ -116,7 +116,7 @@ class FroniusModbusNumber(FroniusModbusBaseEntity, NumberEntity):
         elif self._key == 'grid_discharge_power':
             await self._hub.set_grid_discharge_power(value)
         elif self._key == 'export_limit_rate':
-            await self._hub.apply_export_limit(value)
+            await self._hub.set_export_limit_rate(value)
 
         #_LOGGER.debug(f"Number {self._key} set to {value}")
         self.async_write_ha_state()

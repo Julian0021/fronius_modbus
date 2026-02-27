@@ -4,6 +4,7 @@
 
 import asyncio
 import logging
+import time
 from typing import Optional
 from .extmodbusclient import ExtModbusClient
 import requests
@@ -71,6 +72,7 @@ class FroniusModbusClient(ExtModbusClient):
         self._inverter_frequency_lower_bound = self._grid_frequency - 5
         self._inverter_frequency_upper_bound = self._grid_frequency + 5
 
+        self._export_limit_enable_mask_until = 0.0
         self.data = {}
 
     def _map_value(self, values: dict, key: int, field_name: str):
@@ -911,12 +913,17 @@ class FroniusModbusClient(ExtModbusClient):
             self.data['export_limit_rate_pct'] = None
             self.data['export_limit_rate'] = None
 
-        # Read export limit enable register (40236)
+        if time.monotonic() < self._export_limit_enable_mask_until:
+            self.data['export_limit_enable'] = EXPORT_LIMIT_STATUS.get(1, 'Enabled')
+            return True
+
         export_limit_enable_raw = await self._read_export_limit_enable_raw()
         if export_limit_enable_raw is None:
             self.data['export_limit_enable'] = None
         else:
             self.data['export_limit_enable'] = EXPORT_LIMIT_STATUS.get(export_limit_enable_raw, 'Unknown')
+            if export_limit_enable_raw == 1:
+                self._export_limit_enable_mask_until = 0.0
 
         return True
 
@@ -1105,6 +1112,7 @@ class FroniusModbusClient(ExtModbusClient):
         was_enabled = export_limit_enable_raw == 1
 
         if was_enabled:
+            self._export_limit_enable_mask_until = time.monotonic() + 0.6
             await self.write_registers(
                 unit_id=self._inverter_unit_id,
                 address=EXPORT_LIMIT_ENABLE_ADDRESS,
@@ -1114,25 +1122,48 @@ class FroniusModbusClient(ExtModbusClient):
         await self.write_registers(unit_id=self._inverter_unit_id, address=EXPORT_LIMIT_RATE_ADDRESS, payload=[int(raw_rate)])
 
         if was_enabled:
-            await asyncio.sleep(0.2)
+            applied = False
+            for _ in range(6):
+                rate_regs = await self.get_registers(
+                    unit_id=self._inverter_unit_id,
+                    address=EXPORT_LIMIT_RATE_ADDRESS,
+                    count=1,
+                )
+                if rate_regs is not None:
+                    readback_raw = self._client.convert_from_registers(
+                        rate_regs[0:1],
+                        data_type=self._client.DATATYPE.UINT16,
+                    )
+                    if self.is_numeric(readback_raw) and int(readback_raw) == int(raw_rate):
+                        applied = True
+                        break
+                await asyncio.sleep(0.05)
+
             await self.write_registers(
                 unit_id=self._inverter_unit_id,
                 address=EXPORT_LIMIT_ENABLE_ADDRESS,
                 payload=[1],
             )
             self.data['export_limit_enable'] = EXPORT_LIMIT_STATUS.get(1, 'Enabled')
+            enable_after_raw = await self._read_export_limit_enable_raw()
+            if enable_after_raw == 1:
+                self._export_limit_enable_mask_until = 0.0
         elif export_limit_enable_raw is not None:
+            self._export_limit_enable_mask_until = 0.0
             self.data['export_limit_enable'] = EXPORT_LIMIT_STATUS.get(export_limit_enable_raw, 'Unknown')
+        else:
+            self._export_limit_enable_mask_until = 0.0
 
         self.data['export_limit_rate_raw'] = raw_rate
         self.data['export_limit_rate_pct'] = self._export_limit_raw_to_percent(raw_rate)
         self.data['export_limit_rate'] = self._export_limit_raw_to_watts(raw_rate)
         _LOGGER.info(
-            "Set export limit rate to %s W (raw=%s, enable_before=%s, pulsed_enable=%s)",
+            "Set export limit rate to %s W (raw=%s, enable_before=%s, pulsed_enable=%s, applied=%s)",
             self.data['export_limit_rate'],
             raw_rate,
             export_limit_enable_raw,
             was_enabled,
+            applied if was_enabled else None,
         )
 
     async def set_export_limit_enable(self, enable):

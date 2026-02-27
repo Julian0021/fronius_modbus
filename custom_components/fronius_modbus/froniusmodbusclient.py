@@ -2,6 +2,7 @@
 
 """BYD Battery Box Class"""
 
+import asyncio
 import logging
 from typing import Optional
 from .extmodbusclient import ExtModbusClient
@@ -134,6 +135,23 @@ class FroniusModbusClient(ExtModbusClient):
         raw_max = int(round(100.0 / (10 ** rate_sf)))
         raw_value = int(round(raw_unclamped))
         return max(0, min(raw_max, raw_value))
+
+    async def _read_export_limit_enable_raw(self) -> Optional[int]:
+        regs = await self.get_registers(
+            unit_id=self._inverter_unit_id,
+            address=EXPORT_LIMIT_ENABLE_ADDRESS,
+            count=1,
+        )
+        if regs is None:
+            return None
+
+        enable_raw = self._client.convert_from_registers(
+            regs[0:1],
+            data_type=self._client.DATATYPE.UINT16,
+        )
+        if not self.is_numeric(enable_raw):
+            return None
+        return int(enable_raw)
 
     def _sanitize_mppt_u16(self, value: Optional[int]) -> Optional[int]:
         if not self.is_numeric(value):
@@ -894,12 +912,11 @@ class FroniusModbusClient(ExtModbusClient):
             self.data['export_limit_rate'] = None
 
         # Read export limit enable register (40236)
-        enable_regs = await self.get_registers(unit_id=self._inverter_unit_id, address=EXPORT_LIMIT_ENABLE_ADDRESS, count=1)
-        if enable_regs is not None:
-            export_limit_enable_raw = self._client.convert_from_registers(enable_regs[0:1], data_type=self._client.DATATYPE.UINT16)
-            self.data['export_limit_enable'] = EXPORT_LIMIT_STATUS.get(export_limit_enable_raw, 'Unknown')
-        else:
+        export_limit_enable_raw = await self._read_export_limit_enable_raw()
+        if export_limit_enable_raw is None:
             self.data['export_limit_enable'] = None
+        else:
+            self.data['export_limit_enable'] = EXPORT_LIMIT_STATUS.get(export_limit_enable_raw, 'Unknown')
 
         return True
 
@@ -1084,17 +1101,45 @@ class FroniusModbusClient(ExtModbusClient):
             _LOGGER.error("Cannot set export limit rate, missing max power or scale factor")
             return
 
+        export_limit_enable_raw = await self._read_export_limit_enable_raw()
+        was_enabled = export_limit_enable_raw == 1
+
+        if was_enabled:
+            await self.write_registers(
+                unit_id=self._inverter_unit_id,
+                address=EXPORT_LIMIT_ENABLE_ADDRESS,
+                payload=[0],
+            )
+
         await self.write_registers(unit_id=self._inverter_unit_id, address=EXPORT_LIMIT_RATE_ADDRESS, payload=[int(raw_rate)])
+
+        if was_enabled:
+            await asyncio.sleep(0.2)
+            await self.write_registers(
+                unit_id=self._inverter_unit_id,
+                address=EXPORT_LIMIT_ENABLE_ADDRESS,
+                payload=[1],
+            )
+            self.data['export_limit_enable'] = EXPORT_LIMIT_STATUS.get(1, 'Enabled')
+        elif export_limit_enable_raw is not None:
+            self.data['export_limit_enable'] = EXPORT_LIMIT_STATUS.get(export_limit_enable_raw, 'Unknown')
+
         self.data['export_limit_rate_raw'] = raw_rate
         self.data['export_limit_rate_pct'] = self._export_limit_raw_to_percent(raw_rate)
         self.data['export_limit_rate'] = self._export_limit_raw_to_watts(raw_rate)
-        _LOGGER.info("Set export limit rate to %s W (raw=%s)", self.data['export_limit_rate'], raw_rate)
+        _LOGGER.info(
+            "Set export limit rate to %s W (raw=%s, enable_before=%s, pulsed_enable=%s)",
+            self.data['export_limit_rate'],
+            raw_rate,
+            export_limit_enable_raw,
+            was_enabled,
+        )
 
     async def set_export_limit_enable(self, enable):
         """Enable/disable export limit (0=Disabled, 1=Enabled)"""
         enable_value = 1 if enable else 0
         await self.write_registers(unit_id=self._inverter_unit_id, address=EXPORT_LIMIT_ENABLE_ADDRESS, payload=[enable_value])
-        self.data['export_limit_enable'] = enable_value
+        self.data['export_limit_enable'] = EXPORT_LIMIT_STATUS.get(enable_value, 'Unknown')
         _LOGGER.info(f"Set export limit enable to {enable_value}")
 
     async def set_conn_status(self, enable):

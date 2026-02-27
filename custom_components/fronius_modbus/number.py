@@ -48,13 +48,20 @@ async def async_setup_entry(hass, config_entry, async_add_entities) -> None:
 
     # Add inverter number entities (export limit controls)
     for number_info in INVERTER_NUMBER_TYPES:
+        max_val = number_info[2]['max']
+        max_key = number_info[2].get('max_key')
+        if max_key is not None:
+            dynamic_max = hub.data.get(max_key)
+            if isinstance(dynamic_max, (int, float)) and dynamic_max > 0:
+                max_val = dynamic_max
+
         number = FroniusModbusNumber(
             coordinator=coordinator,
             device_info=hub.device_info_inverter,
             name=number_info[0],
             key=number_info[1],
             min_val=number_info[2]['min'],
-            max_val=number_info[2]['max'],
+            max_val=max_val,
             unit=number_info[2]['unit'],
             mode=number_info[2]['mode'],
             native_step=number_info[2]['step'],
@@ -109,7 +116,7 @@ class FroniusModbusNumber(FroniusModbusBaseEntity, NumberEntity):
         elif self._key == 'grid_discharge_power':
             await self._hub.set_grid_discharge_power(value)
         elif self._key == 'export_limit_rate':
-            await self._hub.apply_export_limit(value)
+            await self._hub.set_export_limit_rate(value)
 
         #_LOGGER.debug(f"Number {self._key} set to {value}")
         self.async_write_ha_state()

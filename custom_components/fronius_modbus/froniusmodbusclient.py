@@ -2,15 +2,13 @@
 
 """BYD Battery Box Class"""
 
-import asyncio
 import logging
-from typing import Optional, Literal
+from typing import Optional
 from .extmodbusclient import ExtModbusClient
 import requests
 
 from .froniusmodbusclient_const import (
     INVERTER_ADDRESS,
-    MPPT_ADDRESS,
     COMMON_ADDRESS,
     NAMEPLATE_ADDRESS,
     STORAGE_ADDRESS,
@@ -18,6 +16,12 @@ from .froniusmodbusclient_const import (
     EXPORT_LIMIT_RATE_ADDRESS,
     EXPORT_LIMIT_ENABLE_ADDRESS,
     CONN_ADDRESS,
+    SUNSPEC_ID_ADDRESS,
+    SUNSPEC_FIRST_MODEL_HEADER_ADDRESS,
+    SUNSPEC_ID_WORD_0,
+    SUNSPEC_ID_WORD_1,
+    SUNSPEC_END_MODEL_ID,
+    SUNSPEC_SCAN_MAX_MODELS,
     STORAGE_CONTROL_MODE,
     CHARGE_STATUS,
     CHARGE_GRID_STATUS,
@@ -57,6 +61,8 @@ class FroniusModbusClient(ExtModbusClient):
         self._storage_address = STORAGE_ADDRESS
         self.mppt_module_count = 2
         self.mppt_model_length = 88
+        self._sunspec_models_by_id = {}
+        self._sunspec_model_headers = []
         self._grid_frequency = 50
         self._grid_frequency_lower_bound = self._grid_frequency - 0.2
         self._grid_frequency_upper_bound = self._grid_frequency + 0.2
@@ -76,22 +82,164 @@ class FroniusModbusClient(ExtModbusClient):
     def _storage_register_address(self, offset: int) -> int:
         return self._storage_address + offset
 
-    def _update_storage_base_address(self, mppt_model_length: int):
+    def _get_export_limit_rate_sf(self) -> Optional[int]:
+        value = self.data.get("export_limit_rate_sf")
+        if not self.is_numeric(value):
+            return None
+        rate_sf = int(value)
+        if rate_sf < -6 or rate_sf > 6:
+            _LOGGER.error("Invalid export limit scale factor: %s", rate_sf)
+            return None
+        return rate_sf
+
+    def _get_inverter_max_power_w(self) -> Optional[float]:
+        value = self.data.get("max_power")
+        if not self.is_numeric(value):
+            return None
+        max_power_w = float(value)
+        if max_power_w <= 0:
+            return None
+        return max_power_w
+
+    def _export_limit_raw_to_percent(self, raw_value: int) -> Optional[float]:
+        rate_sf = self._get_export_limit_rate_sf()
+        if rate_sf is None or not self.is_numeric(raw_value):
+            return None
+
+        percent = float(raw_value) * (10 ** rate_sf)
+        if percent < 0 or percent > 100:
+            _LOGGER.error("Export limit percent out of range: raw=%s sf=%s pct=%s", raw_value, rate_sf, percent)
+            return None
+        return percent
+
+    def _export_limit_raw_to_watts(self, raw_value: int) -> Optional[int]:
+        percent = self._export_limit_raw_to_percent(raw_value)
+        max_power_w = self._get_inverter_max_power_w()
+        if percent is None or max_power_w is None:
+            return None
+        return int(round(max_power_w * percent / 100.0))
+
+    def _export_limit_watts_to_raw(self, watts: float) -> Optional[int]:
+        if not self.is_numeric(watts):
+            return None
+
+        max_power_w = self._get_inverter_max_power_w()
+        rate_sf = self._get_export_limit_rate_sf()
+        if max_power_w is None or rate_sf is None:
+            return None
+
+        clamped_watts = min(max(float(watts), 0.0), max_power_w)
+        percent = (clamped_watts / max_power_w) * 100.0
+        raw_unclamped = percent / (10 ** rate_sf)
+        raw_max = int(round(100.0 / (10 ** rate_sf)))
+        raw_value = int(round(raw_unclamped))
+        return max(0, min(raw_max, raw_value))
+
+    def _sanitize_mppt_u16(self, value: Optional[int]) -> Optional[int]:
+        if not self.is_numeric(value):
+            return None
+        sanitized = int(value)
+        if sanitized == 0xFFFF:
+            return None
+        return sanitized
+
+    def _sanitize_mppt_u32(self, value: Optional[int]) -> Optional[int]:
+        if not self.is_numeric(value):
+            return None
+        sanitized = int(value)
+        if sanitized == 0xFFFFFFFF:
+            return None
+        return sanitized
+
+    def _update_storage_base_address(self, mppt_model_length: int, mppt_data_address: Optional[int] = None):
         if not self.is_numeric(mppt_model_length):
             return
 
         model_length = int(mppt_model_length)
-        if model_length < 20 or model_length > 200:
+        if model_length <= 0 or model_length > 4096:
             return
 
-        # Storage model starts directly behind model 160: L + model length + 2.
-        candidate = MPPT_ADDRESS + model_length + 2
-        if candidate < 40300 or candidate > 40500:
+        if not self.is_numeric(mppt_data_address):
+            return
+
+        # Storage model data starts directly behind the next model header after model 160.
+        # candidate = mppt_data_address + model_length + 2 (skip next model header ID + L).
+        candidate = int(mppt_data_address) + model_length + 2
+        if candidate < 40000 or candidate > 50000:
             return
 
         self.mppt_model_length = model_length
         self._storage_address = candidate
         self.data["storage_model_address"] = candidate
+
+    def _get_sunspec_model(self, model_id: int):
+        models = self._sunspec_models_by_id.get(model_id)
+        if not models:
+            return None
+        return models[0]
+
+    async def _scan_sunspec_models(self, force: bool = False) -> bool:
+        if self._sunspec_model_headers and not force:
+            return True
+
+        sid_regs = await self.get_registers(
+            unit_id=self._inverter_unit_id,
+            address=SUNSPEC_ID_ADDRESS,
+            count=2,
+        )
+        if sid_regs is None or len(sid_regs) != 2:
+            return False
+        if sid_regs[0] != SUNSPEC_ID_WORD_0 or sid_regs[1] != SUNSPEC_ID_WORD_1:
+            _LOGGER.error("Invalid SunSpec SID at %s: %s", SUNSPEC_ID_ADDRESS, sid_regs)
+            return False
+
+        models_by_id = {}
+        model_headers = []
+        header_address = SUNSPEC_FIRST_MODEL_HEADER_ADDRESS
+
+        for _ in range(SUNSPEC_SCAN_MAX_MODELS):
+            header_regs = await self.get_registers(
+                unit_id=self._inverter_unit_id,
+                address=header_address,
+                count=2,
+            )
+            if header_regs is None or len(header_regs) != 2:
+                return False
+
+            model_id = int(header_regs[0])
+            model_length = int(header_regs[1])
+            if model_id == SUNSPEC_END_MODEL_ID:
+                break
+            if model_id <= 0 or model_length <= 0 or model_length > 4096:
+                _LOGGER.error(
+                    "Invalid SunSpec model header at %s: id=%s length=%s",
+                    header_address,
+                    model_id,
+                    model_length,
+                )
+                return False
+
+            model_entry = {
+                "id": model_id,
+                "length": model_length,
+                "id_address": header_address,
+                "l_address": header_address + 1,
+                "data_address": header_address + 2,
+            }
+            model_headers.append(model_entry)
+            if model_id not in models_by_id:
+                models_by_id[model_id] = []
+            models_by_id[model_id].append(model_entry)
+
+            header_address = model_entry["data_address"] + model_length
+
+        if not model_headers:
+            return False
+
+        self._sunspec_models_by_id = models_by_id
+        self._sunspec_model_headers = model_headers
+        self.data["sunspec_model_count"] = len(model_headers)
+        return True
 
     async def init_data(self):
         await self.connect()
@@ -330,11 +478,13 @@ class FroniusModbusClient(ExtModbusClient):
         WMaxLim_Ena = self._client.convert_from_registers(regs[7:8], data_type = self._client.DATATYPE.UINT16)
         OutPFSet_Ena = self._client.convert_from_registers(regs[12:13], data_type = self._client.DATATYPE.UINT16)
         VArPct_Ena = self._client.convert_from_registers(regs[20:21], data_type = self._client.DATATYPE.INT16)
+        WMaxLimPct_SF = self._client.convert_from_registers(regs[21:22], data_type = self._client.DATATYPE.INT16)
 
         self.data['Conn'] = self._map_value(CONTROL_STATUS, Conn, 'connection control')
         self.data['WMaxLim_Ena'] = self._map_value(CONTROL_STATUS, WMaxLim_Ena, 'throttle control')
         self.data['OutPFSet_Ena'] = self._map_value(CONTROL_STATUS, OutPFSet_Ena, 'fixed power factor')
         self.data['VArPct_Ena'] = self._map_value(CONTROL_STATUS, VArPct_Ena, 'VAr control')
+        self.data['export_limit_rate_sf'] = WMaxLimPct_SF
 
         return True
 
@@ -372,42 +522,38 @@ class FroniusModbusClient(ExtModbusClient):
             return value
 
     async def read_mppt_data(self):
-        mppt_read_address = MPPT_ADDRESS
-        header_regs = await self.get_registers(unit_id=self._inverter_unit_id, address=MPPT_ADDRESS, count=2)
-        if header_regs is None:
+        if not await self._scan_sunspec_models():
             return False
 
-        mppt_model_length = self._client.convert_from_registers(header_regs[0:1], data_type=self._client.DATATYPE.UINT16)
-        if not self.is_numeric(mppt_model_length) or int(mppt_model_length) < 20 or int(mppt_model_length) > 200:
-            alt_header_regs = await self.get_registers(unit_id=self._inverter_unit_id, address=MPPT_ADDRESS - 1, count=2)
-            if alt_header_regs is None:
-                return False
-            alt_mppt_model_length = self._client.convert_from_registers(
-                alt_header_regs[0:1],
-                data_type=self._client.DATATYPE.UINT16,
-            )
-            if not self.is_numeric(alt_mppt_model_length) or int(alt_mppt_model_length) < 20 or int(alt_mppt_model_length) > 200:
-                return False
-            mppt_model_length = alt_mppt_model_length
-            mppt_read_address = MPPT_ADDRESS - 1
+        mppt_model = self._get_sunspec_model(160)
+        if mppt_model is None:
+            return False
 
-        self._update_storage_base_address(int(mppt_model_length))
-        self.data['mppt_model_length'] = int(mppt_model_length)
+        mppt_model_length = int(mppt_model["length"])
+        if mppt_model_length < 20 or mppt_model_length > 200:
+            return False
 
-        storage_model_header = await self.get_registers(
-            unit_id=self._inverter_unit_id,
-            address=self._storage_address - 2,
-            count=2,
+        mppt_read_address = int(mppt_model["l_address"])
+        self._update_storage_base_address(
+            mppt_model_length,
+            mppt_data_address=mppt_model["data_address"],
         )
-        if storage_model_header and len(storage_model_header) == 2:
-            storage_model_id = self._client.convert_from_registers(storage_model_header[0:1], data_type=self._client.DATATYPE.UINT16)
-            storage_model_length = self._client.convert_from_registers(storage_model_header[1:2], data_type=self._client.DATATYPE.UINT16)
+        self.data['mppt_model_length'] = mppt_model_length
+        self.data['mppt_register_address'] = mppt_read_address
+        self.data['mppt_model_id_address'] = int(mppt_model["id_address"])
+
+        storage_model = self._get_sunspec_model(124)
+        if storage_model is not None:
+            storage_model_id = int(storage_model["id"])
+            storage_model_length = int(storage_model["length"])
             self.data['storage_model_id'] = storage_model_id
             self.data['storage_model_length'] = storage_model_length
-            if storage_model_id == 124 and storage_model_length == 24:
+            self.data['storage_model_address'] = int(storage_model["data_address"])
+            if storage_model_length == 24:
+                self._storage_address = int(storage_model["data_address"])
                 self.storage_configured = True
 
-        model_register_count = int(mppt_model_length) + 1
+        model_register_count = mppt_model_length + 1
         regs = await self.get_registers(unit_id=self._inverter_unit_id, address=mppt_read_address, count=model_register_count)
         if regs is None:
             return False
@@ -444,6 +590,7 @@ class FroniusModbusClient(ExtModbusClient):
 
         module_power = {}
         module_lfte = {}
+        module_tms = {}
         module_labels = {}
         module_current = {}
         module_voltage = {}
@@ -454,6 +601,7 @@ class FroniusModbusClient(ExtModbusClient):
             voltage_idx = 20 * module_id - 1
             power_idx = 20 * module_id
             lfte_idx = power_idx + 1
+            tms_idx = lfte_idx + 2
 
             label = None
             if label_idx + 8 <= model_limit:
@@ -463,28 +611,39 @@ class FroniusModbusClient(ExtModbusClient):
                     label = None
             module_labels[module_id] = label
 
-            raw_current = read_u16(current_idx)
-            raw_voltage = read_u16(voltage_idx)
-            raw_power = read_u16(power_idx)
-            raw_lfte = read_u32(lfte_idx)
+            raw_current = self._sanitize_mppt_u16(read_u16(current_idx))
+            raw_voltage = self._sanitize_mppt_u16(read_u16(voltage_idx))
+            raw_power = self._sanitize_mppt_u16(read_u16(power_idx))
+            raw_lfte = self._sanitize_mppt_u32(read_u32(lfte_idx))
+            raw_tms = self._sanitize_mppt_u32(read_u32(tms_idx))
 
             module_current[module_id] = self.calculate_value(raw_current, DCA_SF, 2, 0, 100) if raw_current is not None else None
             module_voltage[module_id] = self.calculate_value(raw_voltage, DCV_SF, 2, 0, 1500) if raw_voltage is not None else None
             module_power[module_id] = self.calculate_value(raw_power, DCW_SF, 2, 0, 15000) if raw_power is not None else None
-            module_lfte[module_id] = self.calculate_value(raw_lfte, DCWH_SF) if raw_lfte is not None else None
+            if raw_lfte is None:
+                module_lfte[module_id] = None
+
+            elif raw_lfte == 0 and raw_current is None and raw_voltage is None and raw_power is None:
+                module_lfte[module_id] = None
+            else:
+                module_lfte[module_id] = self.calculate_value(raw_lfte, DCWH_SF)
+            module_tms[module_id] = raw_tms
 
             self.data[f'module{module_id}_label'] = label
             self.data[f'module{module_id}_power'] = module_power[module_id]
             self.data[f'module{module_id}_lfte'] = module_lfte[module_id]
+            self.data[f'module{module_id}_tms'] = module_tms[module_id]
 
-        self.data['mppt1_current'] = module_current.get(1)
-        self.data['mppt2_current'] = module_current.get(2)
-        self.data['mppt1_voltage'] = module_voltage.get(1)
-        self.data['mppt2_voltage'] = module_voltage.get(2)
-        self.data['mppt1_power'] = module_power.get(1)
-        self.data['mppt2_power'] = module_power.get(2)
-        self.data['mppt1_lfte'] = self.protect_lfte('mppt1_lfte', module_lfte.get(1))
-        self.data['mppt2_lfte'] = self.protect_lfte('mppt2_lfte', module_lfte.get(2))
+            module_idx = module_id - 1
+            self.data[f'mppt_module_{module_idx}_label'] = label
+            self.data[f'mppt_module_{module_idx}_dc_current'] = module_current[module_id]
+            self.data[f'mppt_module_{module_idx}_dc_voltage'] = module_voltage[module_id]
+            self.data[f'mppt_module_{module_idx}_dc_power'] = module_power[module_id]
+            self.data[f'mppt_module_{module_idx}_lifetime_energy'] = self.protect_lfte(
+                f'mppt_module_{module_idx}_lifetime_energy',
+                module_lfte[module_id],
+            )
+            self.data[f'mppt_module_{module_idx}_timestamp'] = module_tms[module_id]
 
         storage_charge_module = None
         storage_discharge_module = None
@@ -508,20 +667,20 @@ class FroniusModbusClient(ExtModbusClient):
 
             storage_charge_power = module_power.get(storage_charge_module)
             storage_discharge_power = module_power.get(storage_discharge_module)
-            self.data['mppt3_power'] = storage_charge_power
-            self.data['mppt4_power'] = storage_discharge_power
-            self.data['mppt3_lfte'] = self.protect_lfte('mppt3_lfte', module_lfte.get(storage_charge_module))
-            self.data['mppt4_lfte'] = self.protect_lfte('mppt4_lfte', module_lfte.get(storage_discharge_module))
+            self.data['storage_charge_power'] = storage_charge_power
+            self.data['storage_discharge_power'] = storage_discharge_power
+            self.data['storage_charge_lfte'] = self.protect_lfte('storage_charge_lfte', module_lfte.get(storage_charge_module))
+            self.data['storage_discharge_lfte'] = self.protect_lfte('storage_discharge_lfte', module_lfte.get(storage_discharge_module))
 
             if self.is_numeric(storage_charge_power) and self.is_numeric(storage_discharge_power):
                 self.data['storage_power'] = round(storage_discharge_power - storage_charge_power, 2)
             else:
                 self.data['storage_power'] = None
         elif self.storage_configured:
-            self.data['mppt3_power'] = None
-            self.data['mppt4_power'] = None
-            self.data['mppt3_lfte'] = None
-            self.data['mppt4_lfte'] = None
+            self.data['storage_charge_power'] = None
+            self.data['storage_discharge_power'] = None
+            self.data['storage_charge_lfte'] = None
+            self.data['storage_discharge_lfte'] = None
             self.data['storage_power'] = None
 
         pv_modules = []
@@ -725,9 +884,13 @@ class FroniusModbusClient(ExtModbusClient):
         # Read export limit rate register (40232)
         rate_regs = await self.get_registers(unit_id=self._inverter_unit_id, address=EXPORT_LIMIT_RATE_ADDRESS, count=1)
         if rate_regs is not None:
-            export_limit_rate = self._client.convert_from_registers(rate_regs[0:1], data_type=self._client.DATATYPE.UINT16)
-            self.data['export_limit_rate'] = export_limit_rate
+            export_limit_rate_raw = self._client.convert_from_registers(rate_regs[0:1], data_type=self._client.DATATYPE.UINT16)
+            self.data['export_limit_rate_raw'] = export_limit_rate_raw
+            self.data['export_limit_rate_pct'] = self._export_limit_raw_to_percent(export_limit_rate_raw)
+            self.data['export_limit_rate'] = self._export_limit_raw_to_watts(export_limit_rate_raw)
         else:
+            self.data['export_limit_rate_raw'] = None
+            self.data['export_limit_rate_pct'] = None
             self.data['export_limit_rate'] = None
 
         # Read export limit enable register (40236)
@@ -915,14 +1078,17 @@ class FroniusModbusClient(ExtModbusClient):
 
 
     async def set_export_limit_rate(self, rate):
-        """Set export limit rate (100-10000, where 10000=100%, minimum 1%)"""
-        if rate < 100:
-            rate = 100
-        elif rate > 10000:
-            rate = 10000
-        await self.write_registers(unit_id=self._inverter_unit_id, address=EXPORT_LIMIT_RATE_ADDRESS, payload=[int(rate)])
-        self.data['export_limit_rate'] = rate
-        _LOGGER.info(f"Set export limit rate to {rate}")
+        """Set export limit rate in watts and write WMaxLimPct raw value."""
+        raw_rate = self._export_limit_watts_to_raw(rate)
+        if raw_rate is None:
+            _LOGGER.error("Cannot set export limit rate, missing max power or scale factor")
+            return
+
+        await self.write_registers(unit_id=self._inverter_unit_id, address=EXPORT_LIMIT_RATE_ADDRESS, payload=[int(raw_rate)])
+        self.data['export_limit_rate_raw'] = raw_rate
+        self.data['export_limit_rate_pct'] = self._export_limit_raw_to_percent(raw_rate)
+        self.data['export_limit_rate'] = self._export_limit_raw_to_watts(raw_rate)
+        _LOGGER.info("Set export limit rate to %s W (raw=%s)", self.data['export_limit_rate'], raw_rate)
 
     async def set_export_limit_enable(self, enable):
         """Enable/disable export limit (0=Disabled, 1=Enabled)"""
@@ -930,15 +1096,6 @@ class FroniusModbusClient(ExtModbusClient):
         await self.write_registers(unit_id=self._inverter_unit_id, address=EXPORT_LIMIT_ENABLE_ADDRESS, payload=[enable_value])
         self.data['export_limit_enable'] = enable_value
         _LOGGER.info(f"Set export limit enable to {enable_value}")
-
-    async def apply_export_limit(self, rate):
-        """Apply export limit by first disabling, then setting rate, then enabling"""
-        await self.set_export_limit_enable(0)  # Disable first
-        await asyncio.sleep(1.0)
-        await self.set_export_limit_rate(rate)  # Set new rate
-        await asyncio.sleep(1.0)
-        await self.set_export_limit_enable(1)  # Enable with new rate
-        _LOGGER.info(f"Applied export limit: rate={rate}, enabled=1")
 
     async def set_conn_status(self, enable):
         """Enable/disable inverter connection (0=Disconnected/Standby, 1=Connected/Normal)"""

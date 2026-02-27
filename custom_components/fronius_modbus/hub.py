@@ -304,9 +304,5 @@ class Hub:
     async def set_export_limit_enable(self, value):
         await self._client.set_export_limit_enable(value)
 
-    async def apply_export_limit(self, rate):
-        await self._client.apply_export_limit(rate)
-
     async def set_conn_status(self, enable):
         await self._client.set_conn_status(enable)
-

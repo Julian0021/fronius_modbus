@@ -12,11 +12,32 @@ DEFAULT_SCAN_INTERVAL = 10
 DEFAULT_PORT = 502
 DEFAULT_INVERTER_UNIT_ID = 1
 DEFAULT_METER_UNIT_ID = 200
+DEFAULT_AUTO_ENABLE_MODBUS = True
+DEFAULT_BATTERY_CONTROL_BACKEND = 'modbus'
 CONF_INVERTER_UNIT_ID = 'inverter_modbus_unit_id'
 CONF_METER_UNIT_ID = 'meter_modbus_unit_id'
+CONF_API_USERNAME = 'api_username'
+CONF_API_PASSWORD = 'api_password'
+CONF_AUTO_ENABLE_MODBUS = 'auto_enable_modbus'
+CONF_BATTERY_CONTROL_BACKEND = 'battery_control_backend'
 ATTR_MANUFACTURER = 'Fronius'
 SUPPORTED_MANUFACTURERS = ['Fronius']
 SUPPORTED_MODELS = ['Primo GEN24', 'Symo GEN24', 'Verto']
+
+BATTERY_CONTROL_BACKEND = {
+    'modbus': 'Modbus',
+    'api': 'API',
+}
+
+API_BATTERY_MODE = {
+    0: 'Automatic',
+    1: 'Manual',
+}
+
+API_SOC_MODE = {
+    'auto': 'Automatic',
+    'manual': 'Manual',
+}
 
 STORAGE_EXT_CONTROL_MODE = {
     0: 'Auto',
@@ -29,16 +50,28 @@ STORAGE_EXT_CONTROL_MODE = {
     7: 'Block Charging',
 }
 
-STORAGE_SELECT_TYPES = [
+STORAGE_MODBUS_SELECT_TYPES = [
     ['Storage Control Mode', 'ext_control_mode', STORAGE_EXT_CONTROL_MODE],
 ]
 
-STORAGE_NUMBER_TYPES = [
+STORAGE_API_SELECT_TYPES = [
+    ['Battery API mode', 'api_battery_mode', API_BATTERY_MODE],
+    ['Battery SOC mode', 'api_soc_mode', API_SOC_MODE],
+]
+
+STORAGE_MODBUS_NUMBER_TYPES = [
     ['Grid discharge power', 'grid_discharge_power', {'min': 0, 'max': 10100, 'step': 10, 'mode':'box', 'unit': 'W', 'max_key': 'MaxDisChaRte'}],
     ['Grid charge power', 'grid_charge_power', {'min': 0, 'max': 10100, 'step': 10, 'mode':'box', 'unit': 'W', 'max_key': 'MaxChaRte'}],
     ['Discharge limit', 'discharge_limit',  {'min': 0, 'max': 10100, 'step': 10, 'mode':'box', 'unit': 'W', 'max_key': 'MaxDisChaRte'}],
     ['PV charge limit', 'charge_limit', {'min': 0, 'max': 10100, 'step': 10, 'mode':'box', 'unit': 'W', 'max_key': 'MaxChaRte'}],
     ['Minimum reserve', 'minimum_reserve', {'min': 5, 'max': 100, 'step': 1, 'mode':'box', 'unit': '%'}],
+]
+
+STORAGE_API_NUMBER_TYPES = [
+    ['Battery API power', 'api_battery_power', {'min': -20000, 'max': 20000, 'step': 10, 'mode': 'box', 'unit': 'W'}],
+    ['Battery SOC minimum', 'api_soc_min', {'min': 0, 'max': 100, 'step': 1, 'mode': 'box', 'unit': '%'}],
+    ['Battery SOC maximum', 'api_soc_max', {'min': 0, 'max': 100, 'step': 1, 'mode': 'box', 'unit': '%'}],
+    ['Battery backup reserve', 'api_backup_reserved', {'min': 0, 'max': 100, 'step': 1, 'mode': 'box', 'unit': '%'}],
 ]
 
 INVERTER_NUMBER_TYPES = [
@@ -80,6 +113,14 @@ INVERTER_SENSOR_TYPES = {
     'ac_limit_rate': ['AC limit rate', 'ac_limit_rate', SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, 'W', 'mdi:chart-line', None],
     'ac_limit_enable': ['AC limit enabled', 'ac_limit_enable', None, None, None, 'mdi:power-plug', EntityCategory.DIAGNOSTIC],
     'isolation_resistance': ['Isolation Resistance', 'isolation_resistance', None, SensorStateClass.MEASUREMENT, 'MΩ', 'mdi:omega', None],
+}
+
+INVERTER_WEB_SENSOR_TYPES = {
+    'api_modbus_mode': ['Web API Modbus mode', 'api_modbus_mode', None, None, None, None, EntityCategory.DIAGNOSTIC],
+    'api_modbus_control': ['Web API Modbus control', 'api_modbus_control', None, None, None, None, EntityCategory.DIAGNOSTIC],
+    'api_modbus_sunspec_mode': ['Web API SunSpec mode', 'api_modbus_sunspec_mode', None, None, None, None, EntityCategory.DIAGNOSTIC],
+    'api_modbus_restriction': ['Web API Modbus restriction', 'api_modbus_restriction', None, None, None, None, EntityCategory.DIAGNOSTIC],
+    'api_modbus_restriction_ip': ['Web API Modbus restriction IP', 'api_modbus_restriction_ip', None, None, None, None, EntityCategory.DIAGNOSTIC],
 }
 
 MPPT_MODULE_SENSOR_TYPES = [
@@ -129,6 +170,7 @@ METER_SENSOR_TYPES = {
 }
 
 STORAGE_SENSOR_TYPES = {
+    'battery_control_backend': ['Battery control backend', 'battery_control_backend', None, None, None, None, EntityCategory.DIAGNOSTIC],
     'control_mode': ['Core storage control mode', 'control_mode', None, None, None, None, EntityCategory.DIAGNOSTIC],
     'charge_status': ['Charge status', 'charge_status', None, None, None, None, None, EntityCategory.DIAGNOSTIC],
     'max_charge': ['Max charging power', 'max_charge', SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, 'W', 'mdi:gauge', EntityCategory.DIAGNOSTIC],
@@ -140,4 +182,9 @@ STORAGE_SENSOR_TYPES = {
     'WHRtg': ['Capacity', 'WHRtg',  SensorDeviceClass.ENERGY, SensorStateClass.MEASUREMENT, 'Wh', None, EntityCategory.DIAGNOSTIC],
     'MaxChaRte': ['Maximum charge rate', 'MaxChaRte',  SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, 'W', None, EntityCategory.DIAGNOSTIC],
     'MaxDisChaRte': ['Maximum discharge rate', 'MaxDisChaRte',  SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, 'W', None, EntityCategory.DIAGNOSTIC],
+}
+
+STORAGE_API_SENSOR_TYPES = {
+    'api_charge_from_ac': ['Web API charge from AC', 'api_charge_from_ac', None, None, None, None, EntityCategory.DIAGNOSTIC],
+    'api_charge_from_grid': ['Web API charge from grid', 'api_charge_from_grid', None, None, None, None, EntityCategory.DIAGNOSTIC],
 }

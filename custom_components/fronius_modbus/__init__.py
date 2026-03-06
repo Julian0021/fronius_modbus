@@ -14,6 +14,12 @@ from .const import (
     DOMAIN,
     CONF_INVERTER_UNIT_ID,
     CONF_METER_UNIT_ID,
+    CONF_API_USERNAME,
+    CONF_API_PASSWORD,
+    CONF_AUTO_ENABLE_MODBUS,
+    CONF_BATTERY_CONTROL_BACKEND,
+    DEFAULT_AUTO_ENABLE_MODBUS,
+    DEFAULT_BATTERY_CONTROL_BACKEND,
 )
 
 from . import hub
@@ -69,16 +75,36 @@ async def _async_remove_legacy_mppt_entities(hass: HomeAssistant, entry: ConfigE
         _LOGGER.info("Removed %s legacy entities", removed)
 
 
+def _entry_value(entry: ConfigEntry, key: str, default=None):
+    return entry.options.get(key, entry.data.get(key, default))
+
+
+async def _async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    await hass.config_entries.async_reload(entry.entry_id)
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: HubConfigEntry) -> bool:
     """Set up Fronius Modbus from a config entry."""
 
-    name = entry.data[CONF_NAME]
-    host = entry.data[CONF_HOST]
-    port = entry.data[CONF_PORT]
-    inverter_unit_id = entry.data.get(CONF_INVERTER_UNIT_ID, 1)
-    scan_interval = entry.data[CONF_SCAN_INTERVAL]
+    name = _entry_value(entry, CONF_NAME)
+    host = _entry_value(entry, CONF_HOST)
+    port = _entry_value(entry, CONF_PORT)
+    inverter_unit_id = _entry_value(entry, CONF_INVERTER_UNIT_ID, 1)
+    scan_interval = _entry_value(entry, CONF_SCAN_INTERVAL)
+    api_username = _entry_value(entry, CONF_API_USERNAME)
+    api_password = _entry_value(entry, CONF_API_PASSWORD)
+    auto_enable_modbus = _entry_value(
+        entry,
+        CONF_AUTO_ENABLE_MODBUS,
+        DEFAULT_AUTO_ENABLE_MODBUS,
+    )
+    battery_control_backend = _entry_value(
+        entry,
+        CONF_BATTERY_CONTROL_BACKEND,
+        DEFAULT_BATTERY_CONTROL_BACKEND,
+    )
 
-    meter_unit_id = entry.data[CONF_METER_UNIT_ID]
+    meter_unit_id = _entry_value(entry, CONF_METER_UNIT_ID)
     if meter_unit_id and meter_unit_id > 0:
         meter_unit_ids = [meter_unit_id]
     else:
@@ -88,10 +114,23 @@ async def async_setup_entry(hass: HomeAssistant, entry: HubConfigEntry) -> bool:
 
     await _async_remove_legacy_mppt_entities(hass, entry)
 
-    entry.runtime_data = hub.Hub(hass = hass, name = name, host = host, port = port, inverter_unit_id=inverter_unit_id, meter_unit_ids=meter_unit_ids, scan_interval = scan_interval)
-    
+    entry.runtime_data = hub.Hub(
+        hass=hass,
+        name=name,
+        host=host,
+        port=port,
+        inverter_unit_id=inverter_unit_id,
+        meter_unit_ids=meter_unit_ids,
+        scan_interval=scan_interval,
+        api_username=api_username,
+        api_password=api_password,
+        auto_enable_modbus=auto_enable_modbus,
+        battery_control_backend=battery_control_backend,
+    )
+
     await entry.runtime_data.init_data(config_entry=entry)
 
+    entry.async_on_unload(entry.add_update_listener(_async_reload_entry))
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
 

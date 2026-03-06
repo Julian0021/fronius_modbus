@@ -10,7 +10,11 @@
                     "port": "Port",
                     "scan_interval": "Scan Interval in Seconds",
                     "inverter_modbus_unit_id": "Inverter Modbus Unit/Slave ID",
-                    "meter_modbus_unit_id": "Meter Modbus Unit/Slave ID"
+                    "meter_modbus_unit_id": "Meter Modbus Unit/Slave ID",
+                    "api_username": "Web API Username",
+                    "api_password": "Web API Password",
+                    "auto_enable_modbus": "Auto-enable Modbus via Web API",
+                    "battery_control_backend": "Battery Control Backend"
                 }
             }
         },
@@ -21,7 +25,10 @@
             "unsupported_hardware": "Unsupported hardware found. See error log for details.",
             "unknown": "An unknown error occurred",
             "scan_interval_too_short": "Scan interval is too short. Minimum 5 seconds.",
-            "modbus_address_conflict": "Modbus IDs are not unique"
+            "modbus_address_conflict": "Modbus IDs are not unique",
+            "incomplete_api_credentials": "Provide both the Web API username and password.",
+            "missing_api_credentials": "Battery Control Backend is set to API but Web API credentials are missing.",
+            "invalid_api_credentials": "Web API login failed. Check the username and password."
         }
     },
     "options": {
@@ -34,12 +41,25 @@
                     "port": "Port",
                     "scan_interval": "Scan Interval in Seconds",
                     "inverter_modbus_unit_id": "Inverter Modbus Unit/Slave ID",
-                    "meter_modbus_unit_id": "Meter Modbus Unit/Slave ID"
+                    "meter_modbus_unit_id": "Meter Modbus Unit/Slave ID",
+                    "api_username": "Web API Username",
+                    "api_password": "Web API Password",
+                    "auto_enable_modbus": "Auto-enable Modbus via Web API",
+                    "battery_control_backend": "Battery Control Backend"
                 }
             }
         },
         "error": {
-            "scan_interval_too_short": "Scan interval is too short. Minimum 5 seconds."
+            "cannot_connect": "Failed to connect",
+            "invalid_port": "Invalid port number",
+            "invalid_host": "Invalid host address",
+            "unsupported_hardware": "Unsupported hardware found. See error log for details.",
+            "unknown": "An unknown error occurred",
+            "scan_interval_too_short": "Scan interval is too short. Minimum 5 seconds.",
+            "modbus_address_conflict": "Modbus IDs are not unique",
+            "incomplete_api_credentials": "Provide both the Web API username and password.",
+            "missing_api_credentials": "Battery Control Backend is set to API but Web API credentials are missing.",
+            "invalid_api_credentials": "Web API login failed. Check the username and password."
         }
     }
   }

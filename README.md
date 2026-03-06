@@ -5,6 +5,8 @@
 
 Home Assistant custom component for reading data from Fronius GEN24 and Verto inverters, connected smart meters, and battery storage. This integration uses a local Modbus connection.
 
+It can also use the authenticated Fronius web API for setup assistance and battery controls that are not available over Modbus.
+
 > [!CAUTION]
 > This is a work in progress project - it is still in early development stage, so there are still breaking changes possible.
 >
@@ -41,6 +43,14 @@ Where the inverter has an 'Insulation Warning' page, Insulation Measurement Mode
 
 ![modbus settings](images/resistance.png?raw=true "resistance")
 
+### Optional: Web API Assisted Setup
+If you provide the inverter Web API username and password in the integration setup, the integration can:
+- auto-enable Modbus TCP during setup/reload
+- expose authenticated battery controls from `/api/config/batteries`
+- expose Modbus service diagnostics from `/api/config/modbus`
+
+The Web API credentials are optional. If they are omitted, the integration stays Modbus-only.
+
 ## Charging From Grid
 For Charging from Grid to work you must have it enabled in the Inverter. 
 Energy Management -> Battery Management -> SoC Settings
@@ -59,6 +69,15 @@ From other generators in the home network and from Public Grid: Checked
 # Usage
 
 ### Battery Storage
+Battery control is split by backend in the integration UI:
+- `Modbus` keeps the existing storage mode / charge / discharge / reserve controls active.
+- `API` hides the Modbus battery controls and exposes the authenticated Fronius battery API controls instead.
+
+This avoids conflicting controls in Home Assistant. If you choose the API backend, treat it as the source of truth for battery behavior.
+The integration also forces the inactive backend into a passive state:
+- `Modbus` backend forces the battery web API back to automatic mode.
+- `API` backend forces Modbus storage control back to `Auto` with a `5%` minimum reserve.
+
 ### Controls
 | Entity  | Description |
 | --- | --- |
@@ -67,6 +86,16 @@ From other generators in the home network and from Public Grid: Checked
 | Grid Discharge Power | The discharging power in watts when the storage is being discharged to the grid. |
 | Minimum Reserve | The minimum reserve for storage when discharging. Note that the storage will charge from the grid with 0.5kW if SOC falls below this level. Called 'Reserve Capacity' in Fronius Web UI. |
 | PV Charge Limit  | This is maximum PV charging power in watts of which the battery can be charged by.  |
+
+### Battery API Controls
+| Entity  | Description |
+| --- | --- |
+| Battery API Mode | Fronius Web API battery mode: `Automatic` or `Manual`. |
+| Battery API Power | Manual Fronius battery power target in watts. Positive values mean consumption/charging, negative values mean feed-in/discharging. |
+| Battery SOC Mode | Fronius Web API SOC mode: `Automatic` or `Manual`. |
+| Battery SOC Minimum | `BAT_M0_SOC_MIN` from the Web API. |
+| Battery SOC Maximum | `BAT_M0_SOC_MAX` from the Web API. |
+| Battery Backup Reserve | `HYB_BACKUP_RESERVED` from the Web API. |
 
 ### Storage Control Modes
 | Mode  | Description |
@@ -105,6 +134,7 @@ Note to change the mode first then set controls active in that mode.
 ### Battery Storage Sensors
 | Entity  | Description |
 | --- | --- |
+| Battery control backend | The configured control owner for battery settings in this integration: `Modbus` or `API`. |
 | Charge Status | Holding / Charging / Discharging |
 | Minimum Reserve | This is minium level to which the battery can be discharged and will be charged from the grid if falls below. Called 'Reserve Capacity' in Web UI. |
 | State of Charge | The current battery level |
@@ -112,7 +142,8 @@ Note to change the mode first then set controls active in that mode.
 ### Diagnostic
 | Entity  | Description |
 | --- | --- |
-To come!
+| Web API charge from AC | `HYB_BM_CHARGEFROMAC` from the authenticated Web API. |
+| Web API charge from grid | `HYB_EVU_CHARGEFROMGRID` from the authenticated Web API. |
 
 
 ### Inverter Sensors
@@ -136,6 +167,8 @@ To come!
 | Grid status | Grid status based on meter and interter frequency. If inverter frequency is 53hz it is running in off grid mode and normally in 50hz. When the inverter is sleeping the meter frequency is checked for connection. |
 | Status / Vendor status | Standard SunSpec inverter state plus the Fronius vendor-specific state code. |
 | Reference voltage / Reference voltage offset | SunSpec model 121 PCC voltage reference values exposed by the inverter. |
+| Web API Modbus mode / control / SunSpec mode | Authenticated Modbus service diagnostics from `/api/config/modbus`. |
+| Web API Modbus restriction / restriction IP | Shows whether the inverter is restricting Modbus access by IP. |
 
 ### Inverter Controls
 | Entity  | Description |

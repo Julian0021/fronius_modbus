@@ -1,13 +1,11 @@
 import logging
-from typing import Optional, Dict, Any
 
 from .const import (
-    STORAGE_NUMBER_TYPES,
+    STORAGE_API_NUMBER_TYPES,
+    STORAGE_MODBUS_NUMBER_TYPES,
     INVERTER_NUMBER_TYPES,
 )
 
-from homeassistant.core import callback
-from homeassistant.const import CONF_NAME
 from homeassistant.components.number import (
     NumberEntity,
 )
@@ -24,7 +22,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities) -> None:
     entities = []
 
     if hub.storage_configured:
-        for number_info in STORAGE_NUMBER_TYPES:
+        for number_info in STORAGE_MODBUS_NUMBER_TYPES:
             max_val = None
             max_key = number_info[2].get('max_key')
             if max_key is not None:
@@ -45,6 +43,22 @@ async def async_setup_entry(hass, config_entry, async_add_entities) -> None:
                 hub=hub,  # Pass hub for control methods
             )
             entities.append(number)
+
+        if hub.web_api_configured:
+            for number_info in STORAGE_API_NUMBER_TYPES:
+                number = FroniusModbusNumber(
+                    coordinator=coordinator,
+                    device_info=hub.device_info_storage,
+                    name=number_info[0],
+                    key=number_info[1],
+                    min_val=number_info[2]['min'],
+                    max_val=number_info[2]['max'],
+                    unit=number_info[2]['unit'],
+                    mode=number_info[2]['mode'],
+                    native_step=number_info[2]['step'],
+                    hub=hub,
+                )
+                entities.append(number)
 
     # Add inverter number entities.
     for number_info in INVERTER_NUMBER_TYPES:
@@ -91,8 +105,8 @@ class FroniusModbusNumber(FroniusModbusBaseEntity, NumberEntity):
         self._hub = hub  # Store hub reference for control methods
 
     @property
-    def state(self):
-        """Return the state of the sensor."""
+    def native_value(self):
+        """Return the native number value."""
         if self.coordinator.data and self._key in self.coordinator.data:
             if self._key in ['grid_discharge_power', 'discharge_limit']:
                 return round(self.coordinator.data[self._key] / 100.0 * self._hub.max_discharge_rate_w, 0)
@@ -117,12 +131,26 @@ class FroniusModbusNumber(FroniusModbusBaseEntity, NumberEntity):
             await self._hub.set_grid_discharge_power(value)
         elif self._key == 'ac_limit_rate':
             await self._hub.set_ac_limit_rate(value)
+        elif self._key == 'api_battery_power':
+            await self._hub.set_api_battery_power(value)
+        elif self._key == 'api_soc_min':
+            await self._hub.set_api_soc_values(soc_min=int(round(value)))
+        elif self._key == 'api_soc_max':
+            await self._hub.set_api_soc_values(soc_max=int(round(value)))
+        elif self._key == 'api_backup_reserved':
+            await self._hub.set_api_soc_values(backup_reserved=int(round(value)))
 
         self.async_write_ha_state()
 
     @property
     def available(self) -> bool:
         """Return depending on mode."""
+        data = self.coordinator.data if isinstance(self.coordinator.data, dict) else {}
+        if not super().available:
+            return False
+        if self._key in ['minimum_reserve', 'charge_limit', 'discharge_limit', 'grid_charge_power', 'grid_discharge_power']:
+            if self._hub.battery_control_uses_api:
+                return False
         if self._key == 'minimum_reserve':
             return True
         if self._key == 'charge_limit' and self._hub.storage_extended_control_mode in [1,3,6]:
@@ -135,4 +163,16 @@ class FroniusModbusNumber(FroniusModbusBaseEntity, NumberEntity):
             return True
         if self._key == 'ac_limit_rate':
             return True
+        if self._key == 'api_battery_power':
+            return (
+                self._hub.web_api_configured
+                and self._hub.battery_control_uses_api
+                and data.get('api_battery_mode_raw') == 1
+            )
+        if self._key in ['api_soc_min', 'api_soc_max', 'api_backup_reserved']:
+            return (
+                self._hub.web_api_configured
+                and self._hub.battery_control_uses_api
+                and data.get('api_soc_mode_raw') == 'manual'
+            )
         return False

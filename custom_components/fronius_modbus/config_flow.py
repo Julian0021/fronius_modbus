@@ -6,7 +6,7 @@ from typing import Any
 import voluptuous as vol
 
 from homeassistant import config_entries, exceptions
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 
 from .hub import Hub
 from homeassistant.const import CONF_NAME, CONF_HOST, CONF_PORT, CONF_SCAN_INTERVAL
@@ -17,24 +17,60 @@ from .const import (
     DEFAULT_PORT,
     DEFAULT_INVERTER_UNIT_ID,
     DEFAULT_METER_UNIT_ID,
+    DEFAULT_AUTO_ENABLE_MODBUS,
+    DEFAULT_BATTERY_CONTROL_BACKEND,
     CONF_INVERTER_UNIT_ID,
     CONF_METER_UNIT_ID,
+    CONF_API_USERNAME,
+    CONF_API_PASSWORD,
+    CONF_AUTO_ENABLE_MODBUS,
+    CONF_BATTERY_CONTROL_BACKEND,
+    BATTERY_CONTROL_BACKEND,
     SUPPORTED_MANUFACTURERS,
     SUPPORTED_MODELS,
 )
 
 _LOGGER = logging.getLogger(__name__)
 
-DATA_SCHEMA = vol.Schema(
-    {
-        vol.Optional(CONF_NAME, default=DEFAULT_NAME): str,
-        vol.Required(CONF_HOST): str,
-        vol.Required(CONF_PORT, default=DEFAULT_PORT): int,
-        vol.Optional(CONF_INVERTER_UNIT_ID, default=DEFAULT_INVERTER_UNIT_ID): int,
-        vol.Optional(CONF_METER_UNIT_ID, default=DEFAULT_METER_UNIT_ID): int,
-        vol.Optional(CONF_SCAN_INTERVAL, default=DEFAULT_SCAN_INTERVAL): int,
-    }
-)
+def _build_schema(defaults: dict[str, Any]) -> vol.Schema:
+    return vol.Schema(
+        {
+            vol.Optional(CONF_NAME, default=defaults.get(CONF_NAME, DEFAULT_NAME)): str,
+            vol.Required(CONF_HOST, default=defaults.get(CONF_HOST, "")): str,
+            vol.Required(CONF_PORT, default=defaults.get(CONF_PORT, DEFAULT_PORT)): int,
+            vol.Optional(
+                CONF_INVERTER_UNIT_ID,
+                default=defaults.get(CONF_INVERTER_UNIT_ID, DEFAULT_INVERTER_UNIT_ID),
+            ): int,
+            vol.Optional(
+                CONF_METER_UNIT_ID,
+                default=defaults.get(CONF_METER_UNIT_ID, DEFAULT_METER_UNIT_ID),
+            ): int,
+            vol.Optional(
+                CONF_SCAN_INTERVAL,
+                default=defaults.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
+            ): int,
+            vol.Optional(
+                CONF_API_USERNAME,
+                default=defaults.get(CONF_API_USERNAME, ""),
+            ): str,
+            vol.Optional(
+                CONF_API_PASSWORD,
+                default=defaults.get(CONF_API_PASSWORD, ""),
+            ): str,
+            vol.Optional(
+                CONF_AUTO_ENABLE_MODBUS,
+                default=defaults.get(CONF_AUTO_ENABLE_MODBUS, DEFAULT_AUTO_ENABLE_MODBUS),
+            ): bool,
+            vol.Optional(
+                CONF_BATTERY_CONTROL_BACKEND,
+                default=defaults.get(
+                    CONF_BATTERY_CONTROL_BACKEND,
+                    DEFAULT_BATTERY_CONTROL_BACKEND,
+                ),
+            ): vol.In(BATTERY_CONTROL_BACKEND),
+        }
+    )
 
 async def validate_input(hass: HomeAssistant, data: dict) -> dict[str, Any]:
     """Validate the user input allows us to connect.
@@ -47,23 +83,50 @@ async def validate_input(hass: HomeAssistant, data: dict) -> dict[str, Any]:
         raise InvalidPort
     if data[CONF_SCAN_INTERVAL] < 5:
         raise ScanIntervalTooShort
-        
+
     if data[CONF_METER_UNIT_ID] > 0:
         meter_addresses = [data[CONF_METER_UNIT_ID]]
     else:
         meter_addresses = []
 
-    all_addresses = meter_addresses + [data[CONF_INVERTER_UNIT_ID]] 
+    api_username = data.get(CONF_API_USERNAME, "").strip()
+    api_password = data.get(CONF_API_PASSWORD, "")
+    if bool(api_username) != bool(api_password):
+        raise IncompleteApiCredentials
+
+    if data.get(CONF_BATTERY_CONTROL_BACKEND) == "api" and not api_username:
+        raise MissingApiCredentials
+
+    all_addresses = meter_addresses + [data[CONF_INVERTER_UNIT_ID]]
 
     if len(all_addresses) > len(set(all_addresses)):
         _LOGGER.error(f"Modbus addresses are not unique {all_addresses}")
         raise AddressesNotUnique
 
-    hub = Hub(hass, data[CONF_NAME], data[CONF_HOST], data[CONF_PORT], data[CONF_INVERTER_UNIT_ID], meter_addresses, data[CONF_SCAN_INTERVAL])
+    hub = Hub(
+        hass,
+        data[CONF_NAME],
+        data[CONF_HOST],
+        data[CONF_PORT],
+        data[CONF_INVERTER_UNIT_ID],
+        meter_addresses,
+        data[CONF_SCAN_INTERVAL],
+        api_username=api_username or None,
+        api_password=api_password or None,
+        auto_enable_modbus=data.get(CONF_AUTO_ENABLE_MODBUS, DEFAULT_AUTO_ENABLE_MODBUS),
+        battery_control_backend=data.get(
+            CONF_BATTERY_CONTROL_BACKEND,
+            DEFAULT_BATTERY_CONTROL_BACKEND,
+        ),
+    )
     try:
+        if api_username and not await hub.validate_web_api():
+            raise InvalidApiCredentials
         await hub.init_data(setup_coordinator=False)
     except Exception as e:
         _LOGGER.error(f"Cannot start hub {e}")
+        if isinstance(e, InvalidApiCredentials):
+            raise
         raise CannotConnect
     finally:
         hub.close()
@@ -97,6 +160,11 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 1
     CONNECTION_CLASS = config_entries.CONN_CLASS_LOCAL_POLL
 
+    @staticmethod
+    @callback
+    def async_get_options_flow(config_entry):
+        return FroniusModbusOptionsFlow(config_entry)
+
     async def async_step_user(self, user_input=None):
         """Handle the initial step."""
         errors = {}
@@ -113,6 +181,12 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 errors["host"] = "invalid_host"
             except ScanIntervalTooShort:
                 errors["base"] = "scan_interval_too_short"
+            except IncompleteApiCredentials:
+                errors["base"] = "incomplete_api_credentials"
+            except MissingApiCredentials:
+                errors["base"] = "missing_api_credentials"
+            except InvalidApiCredentials:
+                errors["base"] = "invalid_api_credentials"
             except UnsupportedHardware:
                 errors["base"] = "unsupported_hardware"
             except AddressesNotUnique:
@@ -122,7 +196,52 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 errors["base"] = "unknown"
 
         return self.async_show_form(
-            step_id="user", data_schema=DATA_SCHEMA, errors=errors
+            step_id="user",
+            data_schema=_build_schema({}),
+            errors=errors,
+        )
+
+
+class FroniusModbusOptionsFlow(config_entries.OptionsFlow):
+    """Handle Fronius Modbus options."""
+
+    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
+        self.config_entry = config_entry
+
+    async def async_step_init(self, user_input=None):
+        errors = {}
+        defaults = {**self.config_entry.data, **self.config_entry.options}
+
+        if user_input is not None:
+            try:
+                await validate_input(self.hass, user_input)
+                return self.async_create_entry(title="", data=user_input)
+            except CannotConnect:
+                errors["base"] = "cannot_connect"
+            except InvalidPort:
+                errors["base"] = "invalid_port"
+            except InvalidHost:
+                errors["host"] = "invalid_host"
+            except ScanIntervalTooShort:
+                errors["base"] = "scan_interval_too_short"
+            except IncompleteApiCredentials:
+                errors["base"] = "incomplete_api_credentials"
+            except MissingApiCredentials:
+                errors["base"] = "missing_api_credentials"
+            except InvalidApiCredentials:
+                errors["base"] = "invalid_api_credentials"
+            except UnsupportedHardware:
+                errors["base"] = "unsupported_hardware"
+            except AddressesNotUnique:
+                errors["base"] = "modbus_address_conflict"
+            except Exception:  # pylint: disable=broad-except
+                _LOGGER.exception("Unexpected exception")
+                errors["base"] = "unknown"
+
+        return self.async_show_form(
+            step_id="init",
+            data_schema=_build_schema(defaults),
+            errors=errors,
         )
 
 class CannotConnect(exceptions.HomeAssistantError):
@@ -141,4 +260,13 @@ class AddressesNotUnique(exceptions.HomeAssistantError):
     """Error to indicate that the modbus addresses are not unique."""
 
 class ScanIntervalTooShort(exceptions.HomeAssistantError):
-    """Error to indicate the scan interval is too short."""    
+    """Error to indicate the scan interval is too short."""
+
+class IncompleteApiCredentials(exceptions.HomeAssistantError):
+    """Error to indicate that only part of the API credentials were provided."""
+
+class MissingApiCredentials(exceptions.HomeAssistantError):
+    """Error to indicate API-backed battery control was selected without credentials."""
+
+class InvalidApiCredentials(exceptions.HomeAssistantError):
+    """Error to indicate Fronius web API credentials are invalid."""

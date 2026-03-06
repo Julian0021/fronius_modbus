@@ -53,6 +53,8 @@ INVERTER_SELECT_TYPES = [
 ]
 
 INVERTER_SENSOR_TYPES = {
+    'A': ['AC current', 'A', SensorDeviceClass.CURRENT, SensorStateClass.MEASUREMENT, 'A', 'mdi:current-ac', None],
+    'AphA': ['AC current L1', 'AphA', SensorDeviceClass.CURRENT, SensorStateClass.MEASUREMENT, 'A', 'mdi:current-ac', None],
     'acpower': ['AC power', 'acpower', SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, 'W', 'mdi:lightning-bolt', None],
     'acenergy': ['AC energy', 'acenergy', SensorDeviceClass.ENERGY, SensorStateClass.TOTAL_INCREASING, 'Wh', 'mdi:lightning-bolt', None],
     'tempcab': ['Temperature', 'tempcab', SensorDeviceClass.TEMPERATURE, SensorStateClass.MEASUREMENT, '°C', 'mdi:thermometer', None],
@@ -91,6 +93,8 @@ MPPT_MODULE_SENSOR_TYPES = [
 ]
 
 INVERTER_SYMO_SENSOR_TYPES = {
+    'AphB': ['AC current L2', 'AphB', SensorDeviceClass.CURRENT, SensorStateClass.MEASUREMENT, 'A', 'mdi:current-ac', None],
+    'AphC': ['AC current L3', 'AphC', SensorDeviceClass.CURRENT, SensorStateClass.MEASUREMENT, 'A', 'mdi:current-ac', None],
     'PhVphB': ['AC voltage L2-N', 'PhVphB', SensorDeviceClass.VOLTAGE, SensorStateClass.MEASUREMENT, 'V', 'mdi:lightning-bolt', None],
     'PhVphC': ['AC voltage L3-N', 'PhVphC', SensorDeviceClass.VOLTAGE, SensorStateClass.MEASUREMENT, 'V', 'mdi:lightning-bolt', None],
     'PPVphAB': ['AC voltage L1-L2', 'PPVphAB', SensorDeviceClass.VOLTAGE, SensorStateClass.MEASUREMENT, 'V', 'mdi:lightning-bolt', None],
@@ -109,7 +113,14 @@ INVERTER_STORAGE_SENSOR_TYPES = {
 
 
 METER_SENSOR_TYPES = {
+    'A': ['AC current', 'A', SensorDeviceClass.CURRENT, SensorStateClass.MEASUREMENT, 'A', 'mdi:current-ac', None],
+    'AphA': ['AC current L1', 'AphA', SensorDeviceClass.CURRENT, SensorStateClass.MEASUREMENT, 'A', 'mdi:current-ac', None],
+    'AphB': ['AC current L2', 'AphB', SensorDeviceClass.CURRENT, SensorStateClass.MEASUREMENT, 'A', 'mdi:current-ac', None],
+    'AphC': ['AC current L3', 'AphC', SensorDeviceClass.CURRENT, SensorStateClass.MEASUREMENT, 'A', 'mdi:current-ac', None],
     'power': ['Power', 'power', SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, 'W', 'mdi:lightning-bolt', None],
+    'WphA': ['Power L1', 'WphA', SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, 'W', 'mdi:lightning-bolt', None],
+    'WphB': ['Power L2', 'WphB', SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, 'W', 'mdi:lightning-bolt', None],
+    'WphC': ['Power L3', 'WphC', SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, 'W', 'mdi:lightning-bolt', None],
     'exported': ['Exported', 'exported', SensorDeviceClass.ENERGY, SensorStateClass.TOTAL_INCREASING, 'Wh', 'mdi:lightning-bolt', None],
     'imported': ['Imported', 'imported', SensorDeviceClass.ENERGY, SensorStateClass.TOTAL_INCREASING, 'Wh', 'mdi:lightning-bolt', None],
     'line_frequency': ['Line frequency', 'line_frequency', SensorDeviceClass.FREQUENCY, SensorStateClass.MEASUREMENT, 'Hz', None, None],

@@ -119,6 +119,15 @@ To come!
 | Entity  | Description |
 | --- | --- |
 | Load | The current total power consumption which is derived by adding up the meter AC power and interver AC power. |
+| AC Current | Total inverter AC current. |
+| AC Current L1 / L2 / L3 | Per-phase inverter AC current. |
+
+### Smart Meter Sensors
+| Entity  | Description |
+| --- | --- |
+| AC Current / L1 / L2 / L3 | Total and per-phase smart meter AC current. |
+| Power | Net grid power measured by the smart meter. |
+| Power L1 / L2 / L3 | Per-phase smart meter real power from SunSpec `WphA`, `WphB`, and `WphC`. The sign matches the meter power direction. |
 
 
 ### Inverter Diagnostics

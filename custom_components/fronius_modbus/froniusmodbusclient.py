@@ -369,6 +369,11 @@ class FroniusModbusClient(ExtModbusClient):
         if regs is None:
             return False
 
+        A = self._client.convert_from_registers(regs[0:1], data_type = self._client.DATATYPE.UINT16)
+        AphA = self._client.convert_from_registers(regs[1:2], data_type = self._client.DATATYPE.UINT16)
+        AphB = self._client.convert_from_registers(regs[2:3], data_type = self._client.DATATYPE.UINT16)
+        AphC = self._client.convert_from_registers(regs[3:4], data_type = self._client.DATATYPE.UINT16)
+        A_SF = self._client.convert_from_registers(regs[4:5], data_type = self._client.DATATYPE.INT16)
         PPVphAB = self._client.convert_from_registers(regs[5:6], data_type = self._client.DATATYPE.UINT16)
         PPVphBC = self._client.convert_from_registers(regs[6:7], data_type = self._client.DATATYPE.UINT16)
         PPVphCA = self._client.convert_from_registers(regs[7:8], data_type = self._client.DATATYPE.UINT16)
@@ -392,6 +397,10 @@ class FroniusModbusClient(ExtModbusClient):
         #EvtVnd1 = self._client.convert_from_registers(regs[42:44], data_type = self._client.DATATYPE.UINT32)
         EvtVnd2 = self._client.convert_from_registers(regs[44:46], data_type = self._client.DATATYPE.UINT32)
 
+        self.data['A'] = self.calculate_value(A, A_SF, 3, 0, 1000)
+        self.data['AphA'] = self.calculate_value(AphA, A_SF, 3, 0, 1000)
+        self.data['AphB'] = self.calculate_value(AphB, A_SF, 3, 0, 1000)
+        self.data['AphC'] = self.calculate_value(AphC, A_SF, 3, 0, 1000)
         self.data['PPVphAB'] = self.calculate_value(PPVphAB, V_SF)
         self.data['PPVphBC'] = self.calculate_value(PPVphBC, V_SF)
         self.data['PPVphCA'] = self.calculate_value(PPVphCA, V_SF)
@@ -837,6 +846,14 @@ class FroniusModbusClient(ExtModbusClient):
         if regs is None:
             return False
 
+        A = self._client.convert_from_registers(regs[0:1], data_type = self._client.DATATYPE.INT16)
+        AphA = self._client.convert_from_registers(regs[1:2], data_type = self._client.DATATYPE.INT16)
+        AphB = self._client.convert_from_registers(regs[2:3], data_type = self._client.DATATYPE.INT16)
+        AphC = self._client.convert_from_registers(regs[3:4], data_type = self._client.DATATYPE.INT16)
+        A_SF = self._client.convert_from_registers(regs[4:5], data_type = self._client.DATATYPE.INT16)
+        WphA = self._client.convert_from_registers(regs[17:18], data_type = self._client.DATATYPE.INT16)
+        WphB = self._client.convert_from_registers(regs[18:19], data_type = self._client.DATATYPE.INT16)
+        WphC = self._client.convert_from_registers(regs[19:20], data_type = self._client.DATATYPE.INT16)
         PhVphA = self._client.convert_from_registers(regs[6:7], data_type = self._client.DATATYPE.INT16)
         PhVphB = self._client.convert_from_registers(regs[7:8], data_type = self._client.DATATYPE.INT16)
         PhVphC = self._client.convert_from_registers(regs[8:9], data_type = self._client.DATATYPE.INT16)
@@ -855,10 +872,17 @@ class FroniusModbusClient(ExtModbusClient):
         acpower = self.calculate_value(W, W_SF, 2, -50000, 50000)
         m_frequency = self.calculate_value(Hz, Hz_SF, 2, 0, 100)
 
+        self.data[meter_prefix + "A"] = self.calculate_value(A, A_SF, 3, -1000, 1000)
+        self.data[meter_prefix + "AphA"] = self.calculate_value(AphA, A_SF, 3, -1000, 1000)
+        self.data[meter_prefix + "AphB"] = self.calculate_value(AphB, A_SF, 3, -1000, 1000)
+        self.data[meter_prefix + "AphC"] = self.calculate_value(AphC, A_SF, 3, -1000, 1000)
         self.data[meter_prefix + "PhVphA"] = self.calculate_value(PhVphA, V_SF,1,0,1000)
         self.data[meter_prefix + "PhVphB"] = self.calculate_value(PhVphB, V_SF,1,0,1000)
         self.data[meter_prefix + "PhVphC"] = self.calculate_value(PhVphC, V_SF,1,0,1000)
         self.data[meter_prefix + "PPV"] = self.calculate_value(PPV, V_SF,1,0,1000)
+        self.data[meter_prefix + "WphA"] = self.calculate_value(WphA, W_SF, 2, -50000, 50000)
+        self.data[meter_prefix + "WphB"] = self.calculate_value(WphB, W_SF, 2, -50000, 50000)
+        self.data[meter_prefix + "WphC"] = self.calculate_value(WphC, W_SF, 2, -50000, 50000)
         self.data[meter_prefix + "exported"] = self.protect_lfte(meter_prefix + 'exported', self.calculate_value(TotWhExp, TotWh_SF))
         self.data[meter_prefix + "imported"] = self.protect_lfte(meter_prefix + 'imported', self.calculate_value(TotWhImp, TotWh_SF))
         self.data[meter_prefix + "line_frequency"] = m_frequency

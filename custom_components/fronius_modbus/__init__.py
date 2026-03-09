@@ -17,9 +17,7 @@ from .const import (
     CONF_API_USERNAME,
     CONF_API_PASSWORD,
     CONF_AUTO_ENABLE_MODBUS,
-    CONF_BATTERY_CONTROL_BACKEND,
     DEFAULT_AUTO_ENABLE_MODBUS,
-    DEFAULT_BATTERY_CONTROL_BACKEND,
 )
 
 from . import hub
@@ -54,7 +52,6 @@ LEGACY_RENAMED_ENTITY_KEYS = (
     "export_limit_enable",
 )
 
-
 def _is_legacy_mppt_unique_id(unique_id: str) -> bool:
     return any(unique_id.endswith(f"_{key}") for key in LEGACY_MPPT_ENTITY_KEYS)
 
@@ -63,7 +60,7 @@ def _is_legacy_renamed_unique_id(unique_id: str) -> bool:
     return any(unique_id.endswith(f"_{key}") for key in LEGACY_RENAMED_ENTITY_KEYS)
 
 
-async def _async_remove_legacy_mppt_entities(hass: HomeAssistant, entry: ConfigEntry) -> None:
+async def _async_remove_legacy_entities(hass: HomeAssistant, entry: ConfigEntry) -> None:
     registry = er.async_get(hass)
     removed = 0
     for entity_entry in er.async_entries_for_config_entry(registry, entry.entry_id):
@@ -98,11 +95,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: HubConfigEntry) -> bool:
         CONF_AUTO_ENABLE_MODBUS,
         DEFAULT_AUTO_ENABLE_MODBUS,
     )
-    battery_control_backend = _entry_value(
-        entry,
-        CONF_BATTERY_CONTROL_BACKEND,
-        DEFAULT_BATTERY_CONTROL_BACKEND,
-    )
 
     meter_unit_id = _entry_value(entry, CONF_METER_UNIT_ID)
     if meter_unit_id and meter_unit_id > 0:
@@ -112,7 +104,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: HubConfigEntry) -> bool:
 
     _LOGGER.debug("Setup %s.%s", DOMAIN, name)
 
-    await _async_remove_legacy_mppt_entities(hass, entry)
+    await _async_remove_legacy_entities(hass, entry)
 
     entry.runtime_data = hub.Hub(
         hass=hass,
@@ -125,7 +117,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: HubConfigEntry) -> bool:
         api_username=api_username,
         api_password=api_password,
         auto_enable_modbus=auto_enable_modbus,
-        battery_control_backend=battery_control_backend,
     )
 
     await entry.runtime_data.init_data(config_entry=entry)

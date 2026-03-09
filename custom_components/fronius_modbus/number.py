@@ -148,9 +148,6 @@ class FroniusModbusNumber(FroniusModbusBaseEntity, NumberEntity):
         data = self.coordinator.data if isinstance(self.coordinator.data, dict) else {}
         if not super().available:
             return False
-        if self._key in ['minimum_reserve', 'charge_limit', 'discharge_limit', 'grid_charge_power', 'grid_discharge_power']:
-            if self._hub.battery_control_uses_api:
-                return False
         if self._key == 'minimum_reserve':
             return True
         if self._key == 'charge_limit' and self._hub.storage_extended_control_mode in [1,3,6]:
@@ -166,13 +163,11 @@ class FroniusModbusNumber(FroniusModbusBaseEntity, NumberEntity):
         if self._key == 'api_battery_power':
             return (
                 self._hub.web_api_configured
-                and self._hub.battery_control_uses_api
                 and data.get('api_battery_mode_raw') == 1
             )
         if self._key in ['api_soc_min', 'api_soc_max', 'api_backup_reserved']:
             return (
                 self._hub.web_api_configured
-                and self._hub.battery_control_uses_api
                 and data.get('api_soc_mode_raw') == 'manual'
             )
         return False

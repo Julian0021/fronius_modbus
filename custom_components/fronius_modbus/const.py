@@ -13,21 +13,14 @@ DEFAULT_PORT = 502
 DEFAULT_INVERTER_UNIT_ID = 1
 DEFAULT_METER_UNIT_ID = 200
 DEFAULT_AUTO_ENABLE_MODBUS = True
-DEFAULT_BATTERY_CONTROL_BACKEND = 'modbus'
 CONF_INVERTER_UNIT_ID = 'inverter_modbus_unit_id'
 CONF_METER_UNIT_ID = 'meter_modbus_unit_id'
 CONF_API_USERNAME = 'api_username'
 CONF_API_PASSWORD = 'api_password'
 CONF_AUTO_ENABLE_MODBUS = 'auto_enable_modbus'
-CONF_BATTERY_CONTROL_BACKEND = 'battery_control_backend'
 ATTR_MANUFACTURER = 'Fronius'
 SUPPORTED_MANUFACTURERS = ['Fronius']
 SUPPORTED_MODELS = ['Primo GEN24', 'Symo GEN24', 'Verto']
-
-BATTERY_CONTROL_BACKEND = {
-    'modbus': 'Modbus',
-    'api': 'API',
-}
 
 API_BATTERY_MODE = {
     0: 'Automatic',
@@ -71,7 +64,7 @@ STORAGE_API_NUMBER_TYPES = [
     ['Battery API power', 'api_battery_power', {'min': -20000, 'max': 20000, 'step': 10, 'mode': 'box', 'unit': 'W'}],
     ['Battery SOC minimum', 'api_soc_min', {'min': 0, 'max': 100, 'step': 1, 'mode': 'box', 'unit': '%'}],
     ['Battery SOC maximum', 'api_soc_max', {'min': 0, 'max': 100, 'step': 1, 'mode': 'box', 'unit': '%'}],
-    ['Battery backup reserve', 'api_backup_reserved', {'min': 0, 'max': 100, 'step': 1, 'mode': 'box', 'unit': '%'}],
+    ['Battery backup reserve', 'api_backup_reserved', {'min': 5, 'max': 100, 'step': 1, 'mode': 'box', 'unit': '%'}],
 ]
 
 INVERTER_NUMBER_TYPES = [
@@ -170,7 +163,6 @@ METER_SENSOR_TYPES = {
 }
 
 STORAGE_SENSOR_TYPES = {
-    'battery_control_backend': ['Battery control backend', 'battery_control_backend', None, None, None, None, EntityCategory.DIAGNOSTIC],
     'control_mode': ['Core storage control mode', 'control_mode', None, None, None, None, EntityCategory.DIAGNOSTIC],
     'charge_status': ['Charge status', 'charge_status', None, None, None, None, None, EntityCategory.DIAGNOSTIC],
     'max_charge': ['Max charging power', 'max_charge', SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, 'W', 'mdi:gauge', EntityCategory.DIAGNOSTIC],

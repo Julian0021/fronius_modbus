@@ -18,8 +18,6 @@ from .froniuswebclient import FroniusWebClient
 from .const import (
     API_BATTERY_MODE,
     API_SOC_MODE,
-    BATTERY_CONTROL_BACKEND,
-    DEFAULT_BATTERY_CONTROL_BACKEND,
     DOMAIN,
     ENTITY_PREFIX,
 )
@@ -121,7 +119,6 @@ class Hub:
         api_username: str | None = None,
         api_password: str | None = None,
         auto_enable_modbus: bool = True,
-        battery_control_backend: str = DEFAULT_BATTERY_CONTROL_BACKEND,
     ) -> None:
         """Init hub."""
         self._hass = hass
@@ -133,7 +130,6 @@ class Hub:
         self._entity_prefix = f'{ENTITY_PREFIX}_{name.lower()}_'
         self._config_entry: ConfigEntry | None = None
         self._auto_enable_modbus = auto_enable_modbus
-        self._battery_control_backend = battery_control_backend
         self._webclient: FroniusWebClient | None = None
 
         self._id = f'{name.lower()}_{host.lower().replace('.','')}'
@@ -145,7 +141,6 @@ class Hub:
         self._scan_interval = timedelta(seconds=scan_interval)
         self.coordinator = None
         self._busy = False
-        self._set_battery_control_backend(self._battery_control_backend)
 
     def toggle_busy(func):
         async def wrapper(self, *args, **kwargs):
@@ -189,8 +184,6 @@ class Hub:
         if self.web_api_configured:
             await self.refresh_web_data()
 
-        await self._enforce_battery_backend(force=True)
-
         if setup_coordinator:
             # Initialize the coordinator. The config-entry first refresh API
             # is only valid when a config entry is available.
@@ -206,11 +199,6 @@ class Hub:
         if not self._webclient:
             return False
         return await self._hass.async_add_executor_job(self._webclient.login)
-
-    def _set_battery_control_backend(self, backend: str | None) -> None:
-        backend_key = backend if backend in BATTERY_CONTROL_BACKEND else DEFAULT_BATTERY_CONTROL_BACKEND
-        self._battery_control_backend = backend_key
-        self.data['battery_control_backend'] = BATTERY_CONTROL_BACKEND[backend_key]
 
     def _apply_web_battery_config(self, battery_config: dict[str, Any]) -> None:
         raw_mode = self._as_int(battery_config.get('HYB_EM_MODE'))
@@ -256,87 +244,62 @@ class Hub:
             battery_config = await self._hass.async_add_executor_job(self._webclient.get_battery_config)
             self._apply_web_battery_config(battery_config)
 
-    async def _ensure_api_passive_for_modbus(self, force: bool = False) -> bool:
-        if not self._webclient or not self.storage_configured:
-            return False
-
-        current_battery_mode = self._as_int(self.data.get('api_battery_mode_raw'))
-        current_soc_mode = self.data.get('api_soc_mode_raw')
-        changed = False
-
-        if force or current_battery_mode != 0:
-            await self._hass.async_add_executor_job(self._webclient.set_battery_config, 0, None)
-            changed = True
-
-        if force or current_soc_mode not in [None, 'auto']:
-            await self._hass.async_add_executor_job(self._webclient.set_battery_soc_config, 'auto')
-            changed = True
-
-        if changed:
-            self.data['api_battery_mode_raw'] = 0
-            self.data['api_battery_mode'] = API_BATTERY_MODE[0]
-            self.data['api_soc_mode_raw'] = 'auto'
-            self.data['api_soc_mode'] = API_SOC_MODE['auto']
-            await self.refresh_web_data()
-
-        return changed
-
-    async def _ensure_modbus_passive_for_api(self, force: bool = False) -> bool:
-        if not self.storage_configured:
-            return False
-
-        current_minimum_reserve = self.data.get('minimum_reserve')
-        try:
-            current_minimum_reserve = float(current_minimum_reserve) if current_minimum_reserve is not None else None
-        except (TypeError, ValueError):
-            current_minimum_reserve = None
-
-        needs_update = (
-            force
-            or self.storage_extended_control_mode != 0
-            or current_minimum_reserve is None
-            or abs(current_minimum_reserve - 5.0) > 0.01
+    def _get_api_soc_values(
+        self,
+        soc_min: int | None = None,
+        soc_max: int | None = None,
+        backup_reserved: int | None = None,
+    ) -> tuple[int, int, int]:
+        next_soc_min = self._as_int(self.data.get('api_soc_min')) if soc_min is None else int(soc_min)
+        next_soc_max = self._as_int(self.data.get('api_soc_max')) if soc_max is None else int(soc_max)
+        next_backup_reserved = (
+            self._as_int(self.data.get('api_backup_reserved'))
+            if backup_reserved is None
+            else int(backup_reserved)
         )
-        if not needs_update:
-            return False
 
-        await self._client.change_settings(
-            mode=0,
-            charge_limit=100,
-            discharge_limit=100,
-            minimum_reserve=5,
-            extended_mode=0,
+        next_soc_min = 6 if next_soc_min is None else next_soc_min
+        next_soc_max = 99 if next_soc_max is None else next_soc_max
+        next_backup_reserved = 5 if next_backup_reserved is None else next_backup_reserved
+
+        if next_soc_min < 0 or next_soc_min > 100:
+            raise ValueError('Battery SOC minimum must be between 0 and 100')
+        if next_soc_max < 0 or next_soc_max > 100:
+            raise ValueError('Battery SOC maximum must be between 0 and 100')
+        if next_backup_reserved < 5 or next_backup_reserved > 100:
+            raise ValueError('Battery backup reserve must be between 5 and 100')
+        if next_soc_min > next_soc_max:
+            raise ValueError('Battery SOC minimum must not exceed maximum')
+
+        return next_soc_min, next_soc_max, next_backup_reserved
+
+    async def _set_api_soc_manual(
+        self,
+        soc_min: int | None = None,
+        soc_max: int | None = None,
+        backup_reserved: int | None = None,
+    ) -> tuple[int, int, int] | None:
+        if not self._webclient:
+            return None
+
+        next_soc_min, next_soc_max, next_backup_reserved = self._get_api_soc_values(
+            soc_min=soc_min,
+            soc_max=soc_max,
+            backup_reserved=backup_reserved,
         )
-        self.data['minimum_reserve'] = 5
-        self.data['control_mode'] = 'Auto'
-        self.data['ext_control_mode'] = 'Auto'
-        await self._client.read_inverter_storage_data()
-        return True
-
-    async def _enforce_battery_backend(self, force: bool = False) -> None:
-        if not self.storage_configured:
-            return
-
-        if self.battery_control_uses_api:
-            await self._ensure_modbus_passive_for_api(force=force)
-        else:
-            await self._ensure_api_passive_for_modbus(force=force)
-
-    async def _prepare_modbus_battery_control(self) -> bool:
-        if self.battery_control_uses_api:
-            _LOGGER.info("Ignoring Modbus battery control because API backend is active")
-            return False
-
-        await self._ensure_api_passive_for_modbus()
-        return True
-
-    async def _prepare_api_battery_control(self) -> bool:
-        if not self.battery_control_uses_api:
-            _LOGGER.info("Ignoring API battery control because Modbus backend is active")
-            return False
-
-        await self._ensure_modbus_passive_for_api()
-        return True
+        await self._hass.async_add_executor_job(
+            self._webclient.set_battery_soc_config,
+            'manual',
+            next_soc_min,
+            next_soc_max,
+            next_backup_reserved,
+        )
+        self.data['api_soc_mode_raw'] = 'manual'
+        self.data['api_soc_mode'] = API_SOC_MODE['manual']
+        self.data['api_soc_min'] = next_soc_min
+        self.data['api_soc_max'] = next_soc_max
+        self.data['api_backup_reserved'] = next_backup_reserved
+        return next_soc_min, next_soc_max, next_backup_reserved
 
     def check_pymodbus_version(self):
         try:
@@ -446,18 +409,8 @@ class Hub:
     def storage_extended_control_mode(self):
         return self._client.storage_extended_control_mode
 
-    @property
-    def battery_control_backend(self) -> str:
-        return self._battery_control_backend
-
-    @property
-    def battery_control_uses_api(self) -> bool:
-        return self._battery_control_backend == 'api'
-
     @toggle_busy
     async def set_mode(self, mode):
-        if not await self._prepare_modbus_battery_control():
-            return
         if mode == 0:
             await self._client.set_auto_mode()
         elif mode == 1:
@@ -477,38 +430,33 @@ class Hub:
 
     @toggle_busy
     async def set_minimum_reserve(self, value):
-        if not await self._prepare_modbus_battery_control():
-            return
+        reserve_value = int(round(value))
+        if reserve_value < 5 or reserve_value > 100:
+            raise ValueError('Minimum reserve must be between 5 and 100')
         await self._client.set_minimum_reserve(value)
+        self.data['minimum_reserve'] = reserve_value
+        if self._webclient:
+            await self._set_api_soc_manual(backup_reserved=reserve_value)
+            await self.refresh_web_data()
 
     @toggle_busy
     async def set_charge_limit(self, value):
-        if not await self._prepare_modbus_battery_control():
-            return
         await self._client.set_charge_limit(value)
 
     @toggle_busy
     async def set_discharge_limit(self, value):
-        if not await self._prepare_modbus_battery_control():
-            return
         await self._client.set_discharge_limit(value)
 
     @toggle_busy
     async def set_grid_charge_power(self, value):
-        if not await self._prepare_modbus_battery_control():
-            return
         await self._client.set_grid_charge_power(value)
            
     @toggle_busy
     async def set_grid_discharge_power(self, value):
-        if not await self._prepare_modbus_battery_control():
-            return
         await self._client.set_grid_discharge_power(value)
 
     @toggle_busy
     async def set_api_battery_mode(self, mode: int):
-        if not await self._prepare_api_battery_control():
-            return
         if not self._webclient:
             return
 
@@ -520,8 +468,6 @@ class Hub:
 
     @toggle_busy
     async def set_api_battery_power(self, value: float):
-        if not await self._prepare_api_battery_control():
-            return
         if not self._webclient:
             return
 
@@ -531,22 +477,11 @@ class Hub:
 
     @toggle_busy
     async def set_api_soc_mode(self, soc_mode: str):
-        if not await self._prepare_api_battery_control():
-            return
         if not self._webclient:
             return
 
         if soc_mode == 'manual':
-            current_soc_min = self._as_int(self.data.get('api_soc_min'))
-            current_soc_max = self._as_int(self.data.get('api_soc_max'))
-            current_backup_reserved = self._as_int(self.data.get('api_backup_reserved'))
-            await self._hass.async_add_executor_job(
-                self._webclient.set_battery_soc_config,
-                'manual',
-                6 if current_soc_min is None else current_soc_min,
-                99 if current_soc_max is None else current_soc_max,
-                5 if current_backup_reserved is None else current_backup_reserved,
-            )
+            await self._set_api_soc_manual()
         else:
             await self._hass.async_add_executor_job(self._webclient.set_battery_soc_config, 'auto')
         await self.refresh_web_data()
@@ -558,34 +493,17 @@ class Hub:
         soc_max: int | None = None,
         backup_reserved: int | None = None,
     ):
-        if not await self._prepare_api_battery_control():
-            return
         if not self._webclient:
             return
 
-        next_soc_min = self._as_int(self.data.get('api_soc_min')) if soc_min is None else int(soc_min)
-        next_soc_max = self._as_int(self.data.get('api_soc_max')) if soc_max is None else int(soc_max)
-        next_backup_reserved = (
-            self._as_int(self.data.get('api_backup_reserved'))
-            if backup_reserved is None
-            else int(backup_reserved)
+        _, _, next_backup_reserved = await self._set_api_soc_manual(
+            soc_min=soc_min,
+            soc_max=soc_max,
+            backup_reserved=backup_reserved,
         )
-        next_soc_min = 6 if next_soc_min is None else next_soc_min
-        next_soc_max = 99 if next_soc_max is None else next_soc_max
-        next_backup_reserved = 5 if next_backup_reserved is None else next_backup_reserved
-
-        if next_soc_min < 0 or next_soc_max > 100 or next_backup_reserved < 0 or next_backup_reserved > 100:
-            raise ValueError('API SOC values are out of range')
-        if next_soc_min > next_soc_max:
-            raise ValueError('Battery SOC minimum must not exceed maximum')
-
-        await self._hass.async_add_executor_job(
-            self._webclient.set_battery_soc_config,
-            'manual',
-            next_soc_min,
-            next_soc_max,
-            next_backup_reserved,
-        )
+        if backup_reserved is not None:
+            await self._client.set_minimum_reserve(next_backup_reserved)
+            self.data['minimum_reserve'] = next_backup_reserved
         await self.refresh_web_data()
 
     async def set_ac_limit_rate(self, value):

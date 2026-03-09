@@ -69,14 +69,10 @@ From other generators in the home network and from Public Grid: Checked
 # Usage
 
 ### Battery Storage
-Battery control is split by backend in the integration UI:
-- `Modbus` keeps the existing storage mode / charge / discharge / reserve controls active.
-- `API` hides the Modbus battery controls and exposes the authenticated Fronius battery API controls instead.
-
-This avoids conflicting controls in Home Assistant. If you choose the API backend, treat it as the source of truth for battery behavior.
-The integration also forces the inactive backend into a passive state:
-- `Modbus` backend forces the battery web API back to automatic mode.
-- `API` backend forces Modbus storage control back to `Auto` with a `5%` minimum reserve.
+If Web API credentials are configured, the integration exposes both Modbus battery controls and authenticated battery API controls together.
+The only built-in cross-protocol synchronization is reserve:
+- writing `Minimum Reserve` also writes the API backup reserve and forces API SOC mode to `manual`
+- writing `Battery Backup Reserve` also writes the Modbus minimum reserve
 
 ### Controls
 | Entity  | Description |
@@ -134,7 +130,6 @@ Note to change the mode first then set controls active in that mode.
 ### Battery Storage Sensors
 | Entity  | Description |
 | --- | --- |
-| Battery control backend | The configured control owner for battery settings in this integration: `Modbus` or `API`. |
 | Charge Status | Holding / Charging / Discharging |
 | Minimum Reserve | This is minium level to which the battery can be discharged and will be charged from the grid if falls below. Called 'Reserve Capacity' in Web UI. |
 | State of Charge | The current battery level |

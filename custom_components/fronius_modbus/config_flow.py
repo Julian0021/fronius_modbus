@@ -18,14 +18,11 @@ from .const import (
     DEFAULT_INVERTER_UNIT_ID,
     DEFAULT_METER_UNIT_ID,
     DEFAULT_AUTO_ENABLE_MODBUS,
-    DEFAULT_BATTERY_CONTROL_BACKEND,
     CONF_INVERTER_UNIT_ID,
     CONF_METER_UNIT_ID,
     CONF_API_USERNAME,
     CONF_API_PASSWORD,
     CONF_AUTO_ENABLE_MODBUS,
-    CONF_BATTERY_CONTROL_BACKEND,
-    BATTERY_CONTROL_BACKEND,
     SUPPORTED_MANUFACTURERS,
     SUPPORTED_MODELS,
 )
@@ -62,13 +59,6 @@ def _build_schema(defaults: dict[str, Any]) -> vol.Schema:
                 CONF_AUTO_ENABLE_MODBUS,
                 default=defaults.get(CONF_AUTO_ENABLE_MODBUS, DEFAULT_AUTO_ENABLE_MODBUS),
             ): bool,
-            vol.Optional(
-                CONF_BATTERY_CONTROL_BACKEND,
-                default=defaults.get(
-                    CONF_BATTERY_CONTROL_BACKEND,
-                    DEFAULT_BATTERY_CONTROL_BACKEND,
-                ),
-            ): vol.In(BATTERY_CONTROL_BACKEND),
         }
     )
 
@@ -94,9 +84,6 @@ async def validate_input(hass: HomeAssistant, data: dict) -> dict[str, Any]:
     if bool(api_username) != bool(api_password):
         raise IncompleteApiCredentials
 
-    if data.get(CONF_BATTERY_CONTROL_BACKEND) == "api" and not api_username:
-        raise MissingApiCredentials
-
     all_addresses = meter_addresses + [data[CONF_INVERTER_UNIT_ID]]
 
     if len(all_addresses) > len(set(all_addresses)):
@@ -114,10 +101,6 @@ async def validate_input(hass: HomeAssistant, data: dict) -> dict[str, Any]:
         api_username=api_username or None,
         api_password=api_password or None,
         auto_enable_modbus=data.get(CONF_AUTO_ENABLE_MODBUS, DEFAULT_AUTO_ENABLE_MODBUS),
-        battery_control_backend=data.get(
-            CONF_BATTERY_CONTROL_BACKEND,
-            DEFAULT_BATTERY_CONTROL_BACKEND,
-        ),
     )
     try:
         if api_username and not await hub.validate_web_api():
@@ -183,8 +166,6 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 errors["base"] = "scan_interval_too_short"
             except IncompleteApiCredentials:
                 errors["base"] = "incomplete_api_credentials"
-            except MissingApiCredentials:
-                errors["base"] = "missing_api_credentials"
             except InvalidApiCredentials:
                 errors["base"] = "invalid_api_credentials"
             except UnsupportedHardware:
@@ -226,8 +207,6 @@ class FroniusModbusOptionsFlow(config_entries.OptionsFlow):
                 errors["base"] = "scan_interval_too_short"
             except IncompleteApiCredentials:
                 errors["base"] = "incomplete_api_credentials"
-            except MissingApiCredentials:
-                errors["base"] = "missing_api_credentials"
             except InvalidApiCredentials:
                 errors["base"] = "invalid_api_credentials"
             except UnsupportedHardware:
@@ -264,9 +243,6 @@ class ScanIntervalTooShort(exceptions.HomeAssistantError):
 
 class IncompleteApiCredentials(exceptions.HomeAssistantError):
     """Error to indicate that only part of the API credentials were provided."""
-
-class MissingApiCredentials(exceptions.HomeAssistantError):
-    """Error to indicate API-backed battery control was selected without credentials."""
 
 class InvalidApiCredentials(exceptions.HomeAssistantError):
     """Error to indicate Fronius web API credentials are invalid."""

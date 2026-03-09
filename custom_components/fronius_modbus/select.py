@@ -109,8 +109,4 @@ class FroniusModbusSelect(FroniusModbusBaseEntity, SelectEntity):
     def available(self) -> bool:
         if not super().available:
             return False
-        if self._key == 'ext_control_mode':
-            return not self._hub.battery_control_uses_api
-        if self._key in ['api_battery_mode', 'api_soc_mode']:
-            return self._hub.web_api_configured and self._hub.battery_control_uses_api
         return True

@@ -199,6 +199,9 @@ class FroniusWebClient:
             "HYB_EM_MODE": mode,
             "BAT_M0_SOC_MODE": soc_mode,
         }
+        if int(mode) != 1:
+            payload["BAT_M0_SOC_MIN"] = 5
+            payload["BAT_M0_SOC_MAX"] = 100
         if power is not None:
             payload["HYB_EM_POWER"] = power
         return self._request("post", "/api/config/batteries", payload=payload).ok

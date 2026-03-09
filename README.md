@@ -103,11 +103,11 @@ The only built-in cross-protocol synchronization is reserve:
 
 ### Battery API Controls
 
-| Entity              | Description                                                                                                                        |
-| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| Battery API Mode    | Fronius Web API battery mode: `Automatic` or `Manual`.                                                                             |
-| Battery API Power   | Manual Fronius battery power target in watts. Positive values mean consumption/charging, negative values mean feed-in/discharging. |
-| SOC Maximum         | `BAT_M0_SOC_MAX` from the Web API. All battery API writes force `BAT_M0_SOC_MODE` to `manual`.                                   |
+| Entity           | Description                                                                                                               |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| Battery API Mode | Fronius Web API battery mode: `Automatic` or `Manual`.                                                                    |
+| Target Power     | Manual Fronius battery power target in watts. Negative values target feed-in watts, positive values target battery watts. |
+| SOC Maximum      | `BAT_M0_SOC_MAX` from the Web API.                                                                                        |
 
 ### Storage Control Modes
 

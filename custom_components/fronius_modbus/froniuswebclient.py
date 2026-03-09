@@ -63,6 +63,23 @@ def _parse_json_object(value: Any) -> dict[str, Any]:
     return parsed
 
 
+def _parse_storage_info(attributes: Any) -> dict[str, str | None]:
+    if not isinstance(attributes, dict):
+        return {"manufacturer": None, "model": "Battery Storage", "serial": None}
+
+    nameplate = _parse_json_object(attributes.get("nameplate"))
+    return {
+        "manufacturer": _clean_text(nameplate.get("manufacturer")) or _clean_text(attributes.get("manufacturer")),
+        "model": (
+            _clean_text(attributes.get("model"))
+            or _clean_text(nameplate.get("model"))
+            or _clean_text(attributes.get("DisplayName"))
+            or "Battery Storage"
+        ),
+        "serial": _clean_text(attributes.get("serial")) or _clean_text(nameplate.get("serial")),
+    }
+
+
 class FroniusWebClient:
     """Minimal authenticated client for the Fronius web API."""
 
@@ -110,45 +127,15 @@ class FroniusWebClient:
         return self._request("get", "/api/config/modbus").json()
 
     def get_storage_info(self) -> dict[str, str | None]:
-        info: dict[str, str | None] = {
-            "manufacturer": None,
-            "model": "Battery Storage",
-            "serial": None,
-        }
-
         try:
             data = self._request("get", "/api/components/BatteryManagementSystem/readable").json()
-            body = data.get("Body") or {}
-            nodes = body.get("Data") or {}
-            if not isinstance(nodes, dict) or not nodes:
-                return info
-
-            device = next(iter(nodes.values()))
-            if not isinstance(device, dict):
-                return info
-
-            attributes = device.get("attributes") or {}
-            if not isinstance(attributes, dict):
-                return info
-
-            nameplate = _parse_json_object(attributes.get("nameplate"))
-            manufacturer = _clean_text(nameplate.get("manufacturer")) or _clean_text(attributes.get("manufacturer"))
-            model = (
-                _clean_text(attributes.get("model"))
-                or _clean_text(nameplate.get("model"))
-                or _clean_text(attributes.get("DisplayName"))
-            )
-            serial = _clean_text(attributes.get("serial")) or _clean_text(nameplate.get("serial"))
-
-            if manufacturer is not None:
-                info["manufacturer"] = manufacturer
-            if model is not None:
-                info["model"] = model
-            if serial is not None:
-                info["serial"] = serial
+            nodes = ((data.get("Body") or {}).get("Data") or {})
+            device = next(iter(nodes.values()), {}) if isinstance(nodes, dict) else {}
+            attributes = device.get("attributes") if isinstance(device, dict) else {}
+            return _parse_storage_info(attributes)
         except Exception as err:
             _LOGGER.warning("Failed reading storage identity via web API from %s: %s", self._host, err)
-        return info
+        return _parse_storage_info(None)
 
     def ensure_modbus_enabled(
         self,
@@ -207,14 +194,14 @@ class FroniusWebClient:
         return self._request("get", "/api/config/batteries").json()
 
     def set_battery_config(self, mode: int, power: int | None = None) -> bool:
+        soc_mode = "manual" if int(mode) == 1 else "auto"
         payload: dict[str, Any] = {
             "HYB_EM_MODE": mode,
-            "BAT_M0_SOC_MODE": "manual",
+            "BAT_M0_SOC_MODE": soc_mode,
         }
         if power is not None:
             payload["HYB_EM_POWER"] = power
-        response = self._request("post", "/api/config/batteries", payload=payload)
-        return response.ok
+        return self._request("post", "/api/config/batteries", payload=payload).ok
 
     def set_battery_soc_config(
         self,
@@ -228,5 +215,4 @@ class FroniusWebClient:
             "BAT_M0_SOC_MAX": soc_max,
             "HYB_BACKUP_RESERVED": backup_reserved,
         }
-        response = self._request("post", "/api/config/batteries", payload=payload)
-        return response.ok
+        return self._request("post", "/api/config/batteries", payload=payload).ok

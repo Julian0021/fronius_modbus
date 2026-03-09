@@ -229,7 +229,7 @@ class Hub:
         self.data['api_soc_min'] = api_soc_min
         self.data['api_soc_max'] = self._as_int(battery_config.get('BAT_M0_SOC_MAX'))
         self.data['api_backup_reserved'] = self._as_int(battery_config.get('HYB_BACKUP_RESERVED'))
-        if api_soc_min is not None:
+        if raw_mode == 1 and api_soc_min is not None:
             self.data['minimum_reserve'] = api_soc_min
         self.data['api_charge_from_ac'] = self._enabled_state(battery_config.get('HYB_BM_CHARGEFROMAC'))
         self.data['api_charge_from_grid'] = self._enabled_state(battery_config.get('HYB_EVU_CHARGEFROMGRID'))
@@ -280,12 +280,20 @@ class Hub:
 
         return next_soc_min, next_soc_max, next_backup_reserved
 
+    def _api_battery_mode_is_manual(self) -> bool:
+        return self._as_int(self.data.get('api_battery_mode_raw')) == 1
+
+    def _require_api_battery_mode_manual(self, control_name: str) -> None:
+        if not self._api_battery_mode_is_manual():
+            raise ValueError(f'{control_name} can only be changed when Battery API mode is Manual')
+
     async def _set_api_soc_manual(
         self,
         soc_max: int | None = None,
     ) -> tuple[int, int, int] | None:
         if not self._webclient:
             return None
+        self._require_api_battery_mode_manual('SOC maximum')
 
         next_soc_min, next_soc_max, next_backup_reserved = self._get_api_soc_values(
             soc_max=soc_max,
@@ -449,8 +457,7 @@ class Hub:
             raise ValueError('Minimum reserve must be between 5 and 100')
         await self._client.set_minimum_reserve(reserve_value)
         self.data['minimum_reserve'] = reserve_value
-        if self._webclient:
-            self.data['api_soc_min'] = reserve_value
+        if self._webclient and self._api_battery_mode_is_manual():
             await self._set_api_soc_manual()
             await self.refresh_web_data()
 
@@ -485,6 +492,7 @@ class Hub:
     async def set_api_battery_power(self, value: float):
         if not self._webclient:
             return
+        self._require_api_battery_mode_manual('Target power')
 
         power = int(round(value))
         await self._hass.async_add_executor_job(self._webclient.set_battery_config, 1, power)

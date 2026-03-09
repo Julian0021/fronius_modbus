@@ -4,19 +4,19 @@
         "step": {
             "user": {
                 "title": "Set up Fronius System",
-                "description": "Please provide the Fronius host and required Web API password. The Web API username is fixed to customer. Optionally restrict auto-enabled Modbus to this Home Assistant host IP.",
+                "description": "Please provide the Fronius host and required customer password. Optionally restrict auto-enabled Modbus to this Home Assistant host IP.",
                 "data": {
                     "host": "Host",
-                    "api_password": "Web API Password",
+                    "api_password": "Customer password",
                     "restrict_modbus_to_this_ip": "Restrict Modbus to this IP"
                 }
             },
             "reconfigure": {
                 "title": "Review Fronius System",
-                "description": "Review and save the Fronius host and required Web API password for this migrated entry. The Web API username is fixed to customer. Optionally restrict auto-enabled Modbus to this Home Assistant host IP.",
+                "description": "Review and save the Fronius host and required customer password for this migrated entry. Optionally restrict auto-enabled Modbus to this Home Assistant host IP.",
                 "data": {
                     "host": "Host",
-                    "api_password": "Web API Password",
+                    "api_password": "Customer password",
                     "restrict_modbus_to_this_ip": "Restrict Modbus to this IP"
                 }
             }
@@ -32,25 +32,25 @@
             "unknown": "An unknown error occurred",
             "scan_interval_too_short": "Scan interval is too short. Minimum 5 seconds.",
             "modbus_address_conflict": "Modbus IDs are not unique",
-            "missing_api_password": "Web API password is required.",
-            "invalid_api_credentials": "Web API login failed. Check the username and password.",
+            "missing_api_password": "Customer password is required.",
+            "invalid_api_credentials": "Customer login failed. Check the customer password.",
             "cannot_resolve_local_ip": "Could not determine this Home Assistant host IP for Modbus restriction."
         }
     },
     "issues": {
         "legacy_modbus_only_entry_reconfigure": {
             "title": "Review migrated Fronius configuration",
-            "description": "The Fronius entry \"{entry_title}\" was created with an older version of this integration or is missing the required Web API password. It will keep working temporarily, but the configuration model has changed. Open the integration menu and select Reconfigure to review and save the current host and required Web API password."
+            "description": "The Fronius entry \"{entry_title}\" was created with an older version of this integration or is missing the required customer password. It will keep working temporarily, but the configuration model has changed. Open the integration menu and select Reconfigure to review and save the current host and required customer password."
         }
     },
     "options": {
         "step": {
             "init": {
                 "title": "Set up Fronius System",
-                "description": "Set the Fronius host and required Web API password. The Web API username is fixed to customer. Optionally restrict auto-enabled Modbus to this Home Assistant host IP.",
+                "description": "Set the Fronius host and required customer password. Optionally restrict auto-enabled Modbus to this Home Assistant host IP.",
                 "data": {
                     "host": "Host",
-                    "api_password": "Web API Password",
+                    "api_password": "Customer password",
                     "restrict_modbus_to_this_ip": "Restrict Modbus to this IP"
                 }
             }
@@ -63,8 +63,8 @@
             "unknown": "An unknown error occurred",
             "scan_interval_too_short": "Scan interval is too short. Minimum 5 seconds.",
             "modbus_address_conflict": "Modbus IDs are not unique",
-            "missing_api_password": "Web API password is required.",
-            "invalid_api_credentials": "Web API login failed. Check the username and password.",
+            "missing_api_password": "Customer password is required.",
+            "invalid_api_credentials": "Customer login failed. Check the customer password.",
             "cannot_resolve_local_ip": "Could not determine this Home Assistant host IP for Modbus restriction."
         }
     }

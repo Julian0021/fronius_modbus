@@ -16,6 +16,7 @@ DEFAULT_AUTO_ENABLE_MODBUS = True
 DEFAULT_RESTRICT_MODBUS_TO_THIS_IP = False
 FIXED_API_USERNAME = "customer"
 CONF_RECONFIGURE_REQUIRED = "_reconfigure_required"
+MIGRATION_RECONFIGURE_ISSUE_ID_PREFIX = "legacy_modbus_only_reconfigure_"
 CONF_INVERTER_UNIT_ID = 'inverter_modbus_unit_id'
 CONF_METER_UNIT_ID = 'meter_modbus_unit_id'
 CONF_API_USERNAME = 'api_username'
@@ -65,12 +66,12 @@ STORAGE_MODBUS_NUMBER_TYPES = [
     ['Grid charge power', 'grid_charge_power', {'min': 0, 'max': 10100, 'step': 10, 'mode':'box', 'unit': 'W', 'max_key': 'MaxChaRte'}],
     ['Discharge limit', 'discharge_limit',  {'min': 0, 'max': 10100, 'step': 10, 'mode':'box', 'unit': 'W', 'max_key': 'MaxDisChaRte'}],
     ['PV charge limit', 'charge_limit', {'min': 0, 'max': 10100, 'step': 10, 'mode':'box', 'unit': 'W', 'max_key': 'MaxChaRte'}],
-    ['Minimum reserve', 'minimum_reserve', {'min': 5, 'max': 100, 'step': 1, 'mode':'box', 'unit': '%'}],
+    ['SoC Minimum', 'soc_minimum', {'min': 5, 'max': 100, 'step': 1, 'mode':'box', 'unit': '%'}],
 ]
 
 STORAGE_API_NUMBER_TYPES = [
     ['Target feed in', 'api_battery_power', {'min': -20000, 'max': 20000, 'step': 10, 'mode': 'box', 'unit': 'W'}],
-    ['SOC maximum', 'api_soc_max', {'min': 0, 'max': 100, 'step': 1, 'mode': 'box', 'unit': '%'}],
+    ['SoC Maximum', 'soc_maximum', {'min': 0, 'max': 100, 'step': 1, 'mode': 'box', 'unit': '%'}],
 ]
 
 INVERTER_NUMBER_TYPES = [
@@ -175,7 +176,7 @@ STORAGE_SENSOR_TYPES = {
     'soc': ['State of charge', 'soc', SensorDeviceClass.BATTERY, SensorStateClass.MEASUREMENT, '%', None, None],
     'charging_power': ['Charging power', 'charging_power',  None, None, '%', 'mdi:gauge', EntityCategory.DIAGNOSTIC],
     'discharging_power': ['Discharging power', 'discharging_power',  None, None, '%', 'mdi:gauge', EntityCategory.DIAGNOSTIC],
-    'minimum_reserve': ['Minimum reserve', 'minimum_reserve',  None, None, '%', 'mdi:gauge', None],
+    'soc_minimum': ['SoC Minimum', 'soc_minimum',  None, None, '%', 'mdi:gauge', None],
     'grid_charging': ['Grid charging', 'grid_charging',  None, None, None, None, EntityCategory.DIAGNOSTIC],
     'WHRtg': ['Capacity', 'WHRtg',  SensorDeviceClass.ENERGY, SensorStateClass.MEASUREMENT, 'Wh', None, EntityCategory.DIAGNOSTIC],
     'MaxChaRte': ['Maximum charge rate', 'MaxChaRte',  SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, 'W', None, EntityCategory.DIAGNOSTIC],

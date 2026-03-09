@@ -20,6 +20,7 @@ from .const import (
     CONF_AUTO_ENABLE_MODBUS,
     CONF_RESTRICT_MODBUS_TO_THIS_IP,
     CONF_RECONFIGURE_REQUIRED,
+    MIGRATION_RECONFIGURE_ISSUE_ID_PREFIX,
     DEFAULT_AUTO_ENABLE_MODBUS,
     DEFAULT_RESTRICT_MODBUS_TO_THIS_IP,
     DEFAULT_NAME,
@@ -59,14 +60,14 @@ LEGACY_MPPT_ENTITY_KEYS = (
 LEGACY_RENAMED_ENTITY_KEYS = (
     "export_limit_rate",
     "export_limit_enable",
+    "minimum_reserve",
+    "api_soc_max",
 )
 
 LEGACY_REPLACED_WEB_API_SENSOR_KEYS = (
     "api_charge_from_ac",
     "api_charge_from_grid",
 )
-
-MIGRATION_RECONFIGURE_ISSUE_ID_PREFIX = "legacy_modbus_only_reconfigure_"
 
 def _is_legacy_mppt_unique_id(unique_id: str) -> bool:
     return any(unique_id.endswith(f"_{key}") for key in LEGACY_MPPT_ENTITY_KEYS)
@@ -128,13 +129,14 @@ def _sync_reconfigure_issue(hass: HomeAssistant, entry: ConfigEntry) -> None:
             hass,
             DOMAIN,
             issue_id,
-            is_fixable=False,
+            is_fixable=True,
             is_persistent=True,
             severity=ir.IssueSeverity.WARNING,
             translation_key="legacy_modbus_only_entry_reconfigure",
             translation_placeholders={
                 "entry_title": entry.title or _entry_value(entry, CONF_NAME, "Fronius"),
             },
+            data={"entry_id": entry.entry_id},
         )
         return
 

@@ -40,7 +40,37 @@
     "issues": {
         "legacy_modbus_only_entry_reconfigure": {
             "title": "Review migrated Fronius configuration",
-            "description": "The Fronius entry \"{entry_title}\" was created with an older version of this integration or is missing the required customer password. It will keep working temporarily, but the configuration model has changed. Open the integration menu and select Reconfigure to review and save the current host and required customer password."
+            "fix_flow": {
+                "step": {
+                    "init": {
+                        "title": "Review Fronius System",
+                        "description": "The Fronius entry \"{entry_title}\" was created with an older version of this integration or is missing the required customer password. Review and save the current host and required customer password. Optionally restrict Modbus Control to this Home Assistant host IP.",
+                        "data": {
+                            "host": "Host",
+                            "api_password": "Customer password",
+                            "restrict_modbus_to_this_ip": "Restrict Modbus Control to this IP"
+                        }
+                    }
+                },
+                "error": {
+                    "cannot_connect": "Failed to connect",
+                    "invalid_port": "Invalid port number",
+                    "invalid_host": "Invalid host address",
+                    "unsupported_hardware": "Unsupported hardware found. See error log for details.",
+                    "unknown": "An unknown error occurred",
+                    "scan_interval_too_short": "Scan interval is too short. Minimum 5 seconds.",
+                    "modbus_address_conflict": "Modbus IDs are not unique",
+                    "missing_api_password": "Customer password is required.",
+                    "invalid_api_credentials": "Customer login failed. Check the customer password.",
+                    "cannot_resolve_local_ip": "Could not determine this Home Assistant host IP for Modbus restriction."
+                },
+                "abort": {
+                    "entry_not_found": "The Fronius entry no longer exists."
+                },
+                "create_entry": {
+                    "default": "Configuration updated successfully."
+                }
+            }
         }
     },
     "options": {

@@ -746,13 +746,13 @@ class FroniusModbusClient(ExtModbusClient):
         if self.is_numeric(max_charge) and max_charge > 0:
             self.storage_configured = True
 
-        minimum_reserve_value = self.calculate_value(minimum_reserve, -2, 2, 0, 100)
-        if self.is_numeric(minimum_reserve_value) and float(minimum_reserve_value).is_integer():
-            minimum_reserve_value = int(minimum_reserve_value)
+        soc_minimum_value = self.calculate_value(minimum_reserve, -2, 2, 0, 100)
+        if self.is_numeric(soc_minimum_value) and float(soc_minimum_value).is_integer():
+            soc_minimum_value = int(soc_minimum_value)
 
         self.data['grid_charging'] = self._map_value(CHARGE_GRID_STATUS, charge_grid_set, 'grid charging')
         self.data['charge_status'] = self._map_value(CHARGE_STATUS, charge_status, 'charge status')
-        self.data['minimum_reserve'] = minimum_reserve_value
+        self.data['soc_minimum'] = soc_minimum_value
         self.data['discharging_power'] = self.calculate_value(discharge_power, -2, 2, -100, 100)
         self.data['charging_power'] = self.calculate_value(charge_power, -2, 2, -100, 100)
         self.data['soc'] = self.calculate_value(charge_state, -2, 2, 0, 100)
@@ -921,9 +921,9 @@ class FroniusModbusClient(ExtModbusClient):
 
     async def set_minimum_reserve(self, minimum_reserve: float):
         if not float(minimum_reserve).is_integer():
-            raise ValueError('Minimum reserve must be a whole number')
+            raise ValueError('SoC Minimum must be a whole number')
         if minimum_reserve < 5:
-            _LOGGER.error(f'Attempted to set minimum reserve below 5%. Value: {minimum_reserve}')
+            _LOGGER.error(f'Attempted to set SoC Minimum below 5%. Value: {minimum_reserve}')
             return
         minimum_reserve = int(minimum_reserve) * 100
         await self.write_registers(unit_id=self._inverter_unit_id, address=self._storage_register_address(5), payload=[minimum_reserve])

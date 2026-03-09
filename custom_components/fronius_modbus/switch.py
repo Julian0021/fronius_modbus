@@ -52,7 +52,10 @@ class FroniusModbusSwitch(FroniusModbusBaseEntity, SwitchEntity):
 
     async def async_turn_on(self, **kwargs) -> None:
         if self._key == 'api_charge_from_grid':
-            await self._hub.set_api_charge_sources(charge_from_grid=True)
+            await self._hub.set_api_charge_sources(
+                charge_from_grid=True,
+                charge_from_ac=True,
+            )
         elif self._key == 'api_charge_from_ac':
             await self._hub.set_api_charge_sources(charge_from_ac=True)
         self.async_write_ha_state()
@@ -61,7 +64,10 @@ class FroniusModbusSwitch(FroniusModbusBaseEntity, SwitchEntity):
         if self._key == 'api_charge_from_grid':
             await self._hub.set_api_charge_sources(charge_from_grid=False)
         elif self._key == 'api_charge_from_ac':
-            await self._hub.set_api_charge_sources(charge_from_ac=False)
+            await self._hub.set_api_charge_sources(
+                charge_from_grid=False,
+                charge_from_ac=False,
+            )
         self.async_write_ha_state()
 
     @property

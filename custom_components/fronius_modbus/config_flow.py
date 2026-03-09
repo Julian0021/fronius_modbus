@@ -68,6 +68,22 @@ def _entry_payload(data: dict[str, Any], *, reconfigure_required: bool) -> dict[
     payload[CONF_RECONFIGURE_REQUIRED] = reconfigure_required
     return payload
 
+
+async def async_update_entry_from_input(
+    hass: HomeAssistant,
+    entry: config_entries.ConfigEntry,
+    validated_input: dict[str, Any],
+) -> None:
+    updated_payload = _entry_payload(validated_input, reconfigure_required=False)
+    hass.config_entries.async_update_entry(
+        entry,
+        data={**entry.data, **updated_payload},
+        options={**entry.options, **updated_payload},
+        title=validated_input[CONF_NAME],
+    )
+    await hass.config_entries.async_reload(entry.entry_id)
+
+
 def _build_schema(defaults: dict[str, Any]) -> vol.Schema:
     return vol.Schema(
         {
@@ -230,14 +246,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             try:
                 validated_input = _expand_user_input(user_input, defaults)
                 await validate_input(self.hass, validated_input)
-                updated_payload = _entry_payload(validated_input, reconfigure_required=False)
-                self.hass.config_entries.async_update_entry(
-                    entry,
-                    data={**entry.data, **updated_payload},
-                    options={**entry.options, **updated_payload},
-                    title=validated_input[CONF_NAME],
-                )
-                await self.hass.config_entries.async_reload(entry.entry_id)
+                await async_update_entry_from_input(self.hass, entry, validated_input)
                 return self.async_abort(reason="reconfigure_successful")
             except CannotConnect:
                 errors["base"] = "cannot_connect"

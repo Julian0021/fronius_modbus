@@ -119,8 +119,8 @@ class FroniusModbusNumber(FroniusModbusBaseEntity, NumberEntity):
     async def async_set_native_value(self, value: float) -> None:
         """Change the selected value."""
 
-        if self._key == 'minimum_reserve':
-            await self._hub.set_minimum_reserve(value)
+        if self._key == 'soc_minimum':
+            await self._hub.set_soc_minimum(value)
         elif self._key == 'charge_limit':
             await self._hub.set_charge_limit(value)
         elif self._key == 'discharge_limit':
@@ -133,7 +133,7 @@ class FroniusModbusNumber(FroniusModbusBaseEntity, NumberEntity):
             await self._hub.set_ac_limit_rate(value)
         elif self._key == 'api_battery_power':
             await self._hub.set_api_battery_power(value)
-        elif self._key == 'api_soc_max':
+        elif self._key == 'soc_maximum':
             await self._hub.set_api_soc_values(soc_max=int(round(value)))
 
         self.async_write_ha_state()
@@ -144,7 +144,7 @@ class FroniusModbusNumber(FroniusModbusBaseEntity, NumberEntity):
         data = self.coordinator.data if isinstance(self.coordinator.data, dict) else {}
         if not super().available:
             return False
-        if self._key == 'minimum_reserve':
+        if self._key == 'soc_minimum':
             return True
         if self._key == 'charge_limit' and self._hub.storage_extended_control_mode in [1,3,6]:
             return True
@@ -159,11 +159,11 @@ class FroniusModbusNumber(FroniusModbusBaseEntity, NumberEntity):
         if self._key == 'api_battery_power':
             return (
                 self._hub.web_api_configured
-                and data.get('api_battery_mode_raw') == 1
+                and data.get('api_battery_mode_effective_raw') == 1
             )
-        if self._key == 'api_soc_max':
+        if self._key == 'soc_maximum':
             return (
                 self._hub.web_api_configured
-                and data.get('api_battery_mode_raw') == 1
+                and data.get('api_battery_mode_effective_raw') == 1
             )
         return False

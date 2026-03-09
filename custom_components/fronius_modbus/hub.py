@@ -220,17 +220,21 @@ class Hub:
         else:
             raw_soc_mode = None
 
+        effective_mode = self._derive_api_battery_mode(raw_mode, raw_soc_mode)
+
         self.data['api_battery_mode_raw'] = raw_mode
-        self.data['api_battery_mode'] = API_BATTERY_MODE.get(raw_mode, f'Unknown ({raw_mode})') if raw_mode is not None else None
+        self.data['api_battery_mode_effective_raw'] = effective_mode
+        self.data['api_battery_mode_consistent'] = effective_mode is not None
+        self.data['api_battery_mode'] = API_BATTERY_MODE.get(effective_mode) if effective_mode is not None else None
         self.data['api_battery_power'] = -raw_power if raw_power is not None else None
         self.data['api_soc_mode_raw'] = raw_soc_mode
         self.data['api_soc_mode'] = API_SOC_MODE.get(raw_soc_mode, raw_soc_mode)
         api_soc_min = self._as_int(battery_config.get('BAT_M0_SOC_MIN'))
         self.data['api_soc_min'] = api_soc_min
-        self.data['api_soc_max'] = self._as_int(battery_config.get('BAT_M0_SOC_MAX'))
+        self.data['soc_maximum'] = self._as_int(battery_config.get('BAT_M0_SOC_MAX'))
         self.data['api_backup_reserved'] = self._as_int(battery_config.get('HYB_BACKUP_RESERVED'))
-        if raw_mode == 1 and api_soc_min is not None:
-            self.data['minimum_reserve'] = api_soc_min
+        if effective_mode == 1 and api_soc_min is not None:
+            self.data['soc_minimum'] = api_soc_min
         self.data['api_charge_from_ac'] = self._enabled_bool(battery_config.get('HYB_BM_CHARGEFROMAC'))
         self.data['api_charge_from_grid'] = self._enabled_bool(battery_config.get('HYB_EVU_CHARGEFROMGRID'))
 
@@ -257,31 +261,57 @@ class Hub:
             battery_config = await self._hass.async_add_executor_job(self._webclient.get_battery_config)
             self._apply_web_battery_config(battery_config)
 
-    def _get_api_soc_values(
+    def _get_next_soc_limits(
         self,
+        *,
+        soc_min: int | None = None,
         soc_max: int | None = None,
-    ) -> tuple[int, int, int]:
-        next_soc_min = self._as_int(self.data.get('minimum_reserve'))
-        next_soc_max = self._as_int(self.data.get('api_soc_max')) if soc_max is None else int(soc_max)
-        next_backup_reserved = self._as_int(self.data.get('api_backup_reserved'))
+    ) -> tuple[int, int]:
+        next_soc_min = self._as_int(self.data.get('soc_minimum')) if soc_min is None else int(soc_min)
+        next_soc_max = self._as_int(self.data.get('soc_maximum')) if soc_max is None else int(soc_max)
 
         next_soc_min = 5 if next_soc_min is None else next_soc_min
         next_soc_max = 99 if next_soc_max is None else next_soc_max
-        next_backup_reserved = 5 if next_backup_reserved is None else next_backup_reserved
 
         if next_soc_min < 5 or next_soc_min > 100:
-            raise ValueError('Minimum reserve must be between 5 and 100')
+            raise ValueError('SoC Minimum must be between 5 and 100')
         if next_soc_max < 0 or next_soc_max > 100:
-            raise ValueError('Battery SOC maximum must be between 0 and 100')
+            raise ValueError('SoC Maximum must be between 0 and 100')
+        if next_soc_min > next_soc_max:
+            raise ValueError('SoC Minimum must not exceed SoC Maximum')
+
+        return next_soc_min, next_soc_max
+
+    def _get_api_soc_values(
+        self,
+        *,
+        soc_min: int | None = None,
+        soc_max: int | None = None,
+    ) -> tuple[int, int, int]:
+        next_soc_min, next_soc_max = self._get_next_soc_limits(
+            soc_min=soc_min,
+            soc_max=soc_max,
+        )
+        next_backup_reserved = self._as_int(self.data.get('api_backup_reserved'))
+        next_backup_reserved = 5 if next_backup_reserved is None else next_backup_reserved
         if next_backup_reserved < 5 or next_backup_reserved > 100:
             raise ValueError('Battery backup reserve must be between 5 and 100')
-        if next_soc_min > next_soc_max:
-            raise ValueError('Minimum reserve must not exceed battery SOC maximum')
 
         return next_soc_min, next_soc_max, next_backup_reserved
 
+    def _derive_api_battery_mode(
+        self,
+        raw_mode: int | None,
+        raw_soc_mode: str | None,
+    ) -> int | None:
+        if raw_mode == 1 and raw_soc_mode == 'manual':
+            return 1
+        if raw_mode == 0 and raw_soc_mode == 'auto':
+            return 0
+        return None
+
     def _api_battery_mode_is_manual(self) -> bool:
-        return self._as_int(self.data.get('api_battery_mode_raw')) == 1
+        return self._as_int(self.data.get('api_battery_mode_effective_raw')) == 1
 
     def _require_api_battery_mode_manual(self, control_name: str) -> None:
         if not self._api_battery_mode_is_manual():
@@ -289,13 +319,16 @@ class Hub:
 
     async def _set_api_soc_manual(
         self,
+        soc_min: int | None = None,
         soc_max: int | None = None,
+        control_name: str = 'SoC Maximum',
     ) -> tuple[int, int, int] | None:
         if not self._webclient:
             return None
-        self._require_api_battery_mode_manual('SOC maximum')
+        self._require_api_battery_mode_manual(control_name)
 
         next_soc_min, next_soc_max, next_backup_reserved = self._get_api_soc_values(
+            soc_min=soc_min,
             soc_max=soc_max,
         )
         await self._hass.async_add_executor_job(
@@ -306,9 +339,9 @@ class Hub:
         )
         self.data['api_soc_mode_raw'] = 'manual'
         self.data['api_soc_mode'] = API_SOC_MODE['manual']
-        self.data['minimum_reserve'] = next_soc_min
+        self.data['soc_minimum'] = next_soc_min
         self.data['api_soc_min'] = next_soc_min
-        self.data['api_soc_max'] = next_soc_max
+        self.data['soc_maximum'] = next_soc_max
         self.data['api_backup_reserved'] = next_backup_reserved
         return next_soc_min, next_soc_max, next_backup_reserved
 
@@ -467,14 +500,16 @@ class Hub:
             await self._client.set_block_charge_mode()
 
     @toggle_busy
-    async def set_minimum_reserve(self, value):
-        reserve_value = self._require_whole_number(value, 'Minimum reserve')
-        if reserve_value < 5 or reserve_value > 100:
-            raise ValueError('Minimum reserve must be between 5 and 100')
-        await self._client.set_minimum_reserve(reserve_value)
-        self.data['minimum_reserve'] = reserve_value
+    async def set_soc_minimum(self, value):
+        soc_minimum = self._require_whole_number(value, 'SoC Minimum')
+        if soc_minimum < 5 or soc_minimum > 100:
+            raise ValueError('SoC Minimum must be between 5 and 100')
         if self._webclient and self._api_battery_mode_is_manual():
-            await self._set_api_soc_manual()
+            self._get_next_soc_limits(soc_min=soc_minimum)
+        await self._client.set_minimum_reserve(soc_minimum)
+        self.data['soc_minimum'] = soc_minimum
+        if self._webclient and self._api_battery_mode_is_manual():
+            await self._set_api_soc_manual(soc_min=soc_minimum, control_name='SoC Minimum')
             await self.refresh_web_data()
 
     @toggle_busy
@@ -526,6 +561,7 @@ class Hub:
 
         await self._set_api_soc_manual(
             soc_max=soc_max,
+            control_name='SoC Maximum',
         )
         await self.refresh_web_data()
 
@@ -538,16 +574,22 @@ class Hub:
         if not self._webclient:
             return
 
-        next_charge_from_grid = (
-            self._enabled_bool(self.data.get('api_charge_from_grid'))
-            if charge_from_grid is None
-            else bool(charge_from_grid)
-        )
-        next_charge_from_ac = (
-            self._enabled_bool(self.data.get('api_charge_from_ac'))
-            if charge_from_ac is None
-            else bool(charge_from_ac)
-        )
+        if charge_from_ac is False:
+            next_charge_from_grid = False
+            next_charge_from_ac = False
+        else:
+            next_charge_from_grid = (
+                self._enabled_bool(self.data.get('api_charge_from_grid'))
+                if charge_from_grid is None
+                else bool(charge_from_grid)
+            )
+            next_charge_from_ac = (
+                self._enabled_bool(self.data.get('api_charge_from_ac'))
+                if charge_from_ac is None
+                else bool(charge_from_ac)
+            )
+            if next_charge_from_grid and charge_from_ac is None:
+                next_charge_from_ac = True
 
         await self._hass.async_add_executor_job(
             self._webclient.set_battery_charge_sources,

@@ -54,6 +54,7 @@ Where the inverter has an 'Insulation Warning' page, Insulation Measurement Mode
 If you provide the inverter Web API password in the integration setup, the integration can:
 
 - auto-enable Modbus TCP during setup/reload
+- optionally restrict auto-enabled Modbus TCP to the Home Assistant host IP
 - expose authenticated battery controls from `/api/config/batteries`
 - expose Modbus service diagnostics from `/api/config/modbus`
 

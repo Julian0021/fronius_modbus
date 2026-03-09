@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import socket
 from typing import Any
 
 import requests
@@ -34,6 +35,10 @@ class XHeaderDigestAuth(HTTPDigestAuth):
         if "www-authenticate" not in r.headers and "X-WWW-Authenticate" in r.headers:
             r.headers["www-authenticate"] = r.headers["X-WWW-Authenticate"]
         return super().handle_401(r, **kwargs)
+
+
+class ClientIpResolutionError(RuntimeError):
+    """Raised when the local IP for Modbus restriction cannot be resolved."""
 
 
 def _clean_text(value: Any) -> str | None:
@@ -80,6 +85,18 @@ class FroniusWebClient:
         )
         response.raise_for_status()
         return response
+
+    def _resolve_client_ip(self) -> str:
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+                sock.connect((self._host, 80))
+                client_ip = sock.getsockname()[0]
+        except OSError as err:
+            raise ClientIpResolutionError(f"Failed resolving local IP for {self._host}") from err
+
+        if not client_ip or client_ip.startswith("127."):
+            raise ClientIpResolutionError(f"Invalid local IP resolved for {self._host}: {client_ip!r}")
+        return client_ip
 
     def login(self) -> bool:
         response = requests.get(
@@ -138,10 +155,14 @@ class FroniusWebClient:
         port: int,
         meter_address: int,
         inverter_unit_id: int,
+        restrict_to_client_ip: bool = False,
     ) -> bool:
         current = self.get_modbus_config()
         slave = current.get("slave") or {}
         ctr = slave.get("ctr") or {}
+        current_restriction = ctr.get("restriction") or {}
+        restriction_on = bool(restrict_to_client_ip)
+        restriction_ip = self._resolve_client_ip() if restriction_on else None
 
         if (
             slave.get("mode") == "tcp"
@@ -149,8 +170,14 @@ class FroniusWebClient:
             and _as_int(slave.get("port"), port) == int(port)
             and _as_int(slave.get("meterAddress"), meter_address) == int(meter_address)
             and _as_int(slave.get("rtu_inverter_slave_id"), inverter_unit_id) == int(inverter_unit_id)
+            and _is_enabled(current_restriction.get("on")) == restriction_on
+            and (not restriction_on or current_restriction.get("ip") == restriction_ip)
         ):
             return False
+
+        restriction_payload: dict[str, Any] = {"on": restriction_on}
+        if restriction_ip:
+            restriction_payload["ip"] = restriction_ip
 
         payload = {
             **MASTER_RTUIF,
@@ -161,16 +188,18 @@ class FroniusWebClient:
                 "sunspecMode": "int",
                 "meterAddress": meter_address,
                 "rtu_inverter_slave_id": inverter_unit_id,
-                "ctr": {"on": True, "restriction": {"on": False}},
+                "ctr": {"on": True, "restriction": restriction_payload},
             },
         }
         self._request("post", "/api/config/modbus", payload=payload)
         _LOGGER.info(
-            "Enabled Modbus TCP via web API on %s (port=%s inverter_id=%s meter_id=%s)",
+            "Enabled Modbus TCP via web API on %s (port=%s inverter_id=%s meter_id=%s restriction=%s ip=%s)",
             self._host,
             port,
             inverter_unit_id,
             meter_address,
+            restriction_on,
+            restriction_ip,
         )
         return True
 

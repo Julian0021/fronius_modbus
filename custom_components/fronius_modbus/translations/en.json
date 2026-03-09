@@ -4,18 +4,20 @@
         "step": {
             "user": {
                 "title": "Set up Fronius System",
-                "description": "Please provide the Fronius host and required Web API password. The Web API username is fixed to customer.",
+                "description": "Please provide the Fronius host and required Web API password. The Web API username is fixed to customer. Optionally restrict auto-enabled Modbus to this Home Assistant host IP.",
                 "data": {
                     "host": "Host",
-                    "api_password": "Web API Password"
+                    "api_password": "Web API Password",
+                    "restrict_modbus_to_this_ip": "Restrict Modbus to this IP"
                 }
             },
             "reconfigure": {
                 "title": "Review Fronius System",
-                "description": "Review and save the Fronius host and required Web API password for this migrated entry. The Web API username is fixed to customer.",
+                "description": "Review and save the Fronius host and required Web API password for this migrated entry. The Web API username is fixed to customer. Optionally restrict auto-enabled Modbus to this Home Assistant host IP.",
                 "data": {
                     "host": "Host",
-                    "api_password": "Web API Password"
+                    "api_password": "Web API Password",
+                    "restrict_modbus_to_this_ip": "Restrict Modbus to this IP"
                 }
             }
         },
@@ -31,7 +33,8 @@
             "scan_interval_too_short": "Scan interval is too short. Minimum 5 seconds.",
             "modbus_address_conflict": "Modbus IDs are not unique",
             "missing_api_password": "Web API password is required.",
-            "invalid_api_credentials": "Web API login failed. Check the username and password."
+            "invalid_api_credentials": "Web API login failed. Check the username and password.",
+            "cannot_resolve_local_ip": "Could not determine this Home Assistant host IP for Modbus restriction."
         }
     },
     "issues": {
@@ -44,10 +47,11 @@
         "step": {
             "init": {
                 "title": "Set up Fronius System",
-                "description": "Set the Fronius host and required Web API password. The Web API username is fixed to customer.",
+                "description": "Set the Fronius host and required Web API password. The Web API username is fixed to customer. Optionally restrict auto-enabled Modbus to this Home Assistant host IP.",
                 "data": {
                     "host": "Host",
-                    "api_password": "Web API Password"
+                    "api_password": "Web API Password",
+                    "restrict_modbus_to_this_ip": "Restrict Modbus to this IP"
                 }
             }
         },
@@ -60,7 +64,8 @@
             "scan_interval_too_short": "Scan interval is too short. Minimum 5 seconds.",
             "modbus_address_conflict": "Modbus IDs are not unique",
             "missing_api_password": "Web API password is required.",
-            "invalid_api_credentials": "Web API login failed. Check the username and password."
+            "invalid_api_credentials": "Web API login failed. Check the username and password.",
+            "cannot_resolve_local_ip": "Could not determine this Home Assistant host IP for Modbus restriction."
         }
     }
   }

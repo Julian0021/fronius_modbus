@@ -119,6 +119,7 @@ class Hub:
         api_username: str | None = None,
         api_password: str | None = None,
         auto_enable_modbus: bool = True,
+        restrict_modbus_to_this_ip: bool = False,
     ) -> None:
         """Init hub."""
         self._hass = hass
@@ -130,6 +131,7 @@ class Hub:
         self._entity_prefix = f'{ENTITY_PREFIX}_{name.lower()}_'
         self._config_entry: ConfigEntry | None = None
         self._auto_enable_modbus = auto_enable_modbus
+        self._restrict_modbus_to_this_ip = restrict_modbus_to_this_ip
         self._webclient: FroniusWebClient | None = None
 
         self._id = f'{name.lower()}_{host.lower().replace('.','')}'
@@ -173,6 +175,7 @@ class Hub:
                 self._port,
                 self._meter_unit_ids[0] if self._meter_unit_ids else 200,
                 self._inverter_unit_id,
+                self._restrict_modbus_to_this_ip,
             )
             if enabled:
                 await asyncio.sleep(1.0)

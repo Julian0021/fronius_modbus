@@ -18,8 +18,10 @@ from .const import (
     CONF_API_USERNAME,
     CONF_API_PASSWORD,
     CONF_AUTO_ENABLE_MODBUS,
+    CONF_RESTRICT_MODBUS_TO_THIS_IP,
     CONF_RECONFIGURE_REQUIRED,
     DEFAULT_AUTO_ENABLE_MODBUS,
+    DEFAULT_RESTRICT_MODBUS_TO_THIS_IP,
     DEFAULT_NAME,
     DEFAULT_PORT,
     DEFAULT_SCAN_INTERVAL,
@@ -177,6 +179,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: HubConfigEntry) -> bool:
         CONF_AUTO_ENABLE_MODBUS,
         DEFAULT_AUTO_ENABLE_MODBUS,
     )
+    restrict_modbus_to_this_ip = _entry_value(
+        entry,
+        CONF_RESTRICT_MODBUS_TO_THIS_IP,
+        DEFAULT_RESTRICT_MODBUS_TO_THIS_IP,
+    )
 
     meter_unit_id = _entry_value(entry, CONF_METER_UNIT_ID)
     if meter_unit_id and meter_unit_id > 0:
@@ -200,6 +207,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: HubConfigEntry) -> bool:
         api_username=api_username,
         api_password=api_password,
         auto_enable_modbus=auto_enable_modbus,
+        restrict_modbus_to_this_ip=restrict_modbus_to_this_ip,
     )
 
     await entry.runtime_data.init_data(config_entry=entry)

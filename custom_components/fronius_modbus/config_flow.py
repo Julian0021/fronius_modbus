@@ -18,16 +18,19 @@ from .const import (
     DEFAULT_INVERTER_UNIT_ID,
     DEFAULT_METER_UNIT_ID,
     DEFAULT_AUTO_ENABLE_MODBUS,
+    DEFAULT_RESTRICT_MODBUS_TO_THIS_IP,
     CONF_INVERTER_UNIT_ID,
     CONF_METER_UNIT_ID,
     CONF_API_USERNAME,
     CONF_API_PASSWORD,
     CONF_AUTO_ENABLE_MODBUS,
+    CONF_RESTRICT_MODBUS_TO_THIS_IP,
     CONF_RECONFIGURE_REQUIRED,
     FIXED_API_USERNAME,
     SUPPORTED_MANUFACTURERS,
     SUPPORTED_MODELS,
 )
+from .froniuswebclient import ClientIpResolutionError
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -43,6 +46,7 @@ def _default_payload() -> dict[str, Any]:
         CONF_API_USERNAME: FIXED_API_USERNAME,
         CONF_API_PASSWORD: "",
         CONF_AUTO_ENABLE_MODBUS: DEFAULT_AUTO_ENABLE_MODBUS,
+        CONF_RESTRICT_MODBUS_TO_THIS_IP: DEFAULT_RESTRICT_MODBUS_TO_THIS_IP,
     }
 
 
@@ -52,6 +56,9 @@ def _expand_user_input(user_input: dict[str, Any], defaults: dict[str, Any] | No
         payload.update(defaults)
     payload[CONF_HOST] = str(user_input.get(CONF_HOST, payload[CONF_HOST])).strip()
     payload[CONF_API_PASSWORD] = str(user_input.get(CONF_API_PASSWORD, payload[CONF_API_PASSWORD]))
+    payload[CONF_RESTRICT_MODBUS_TO_THIS_IP] = bool(
+        user_input.get(CONF_RESTRICT_MODBUS_TO_THIS_IP, payload[CONF_RESTRICT_MODBUS_TO_THIS_IP])
+    )
     payload[CONF_API_USERNAME] = FIXED_API_USERNAME
     return payload
 
@@ -69,6 +76,13 @@ def _build_schema(defaults: dict[str, Any]) -> vol.Schema:
                 CONF_API_PASSWORD,
                 default=defaults.get(CONF_API_PASSWORD, ""),
             ): str,
+            vol.Required(
+                CONF_RESTRICT_MODBUS_TO_THIS_IP,
+                default=defaults.get(
+                    CONF_RESTRICT_MODBUS_TO_THIS_IP,
+                    DEFAULT_RESTRICT_MODBUS_TO_THIS_IP,
+                ),
+            ): bool,
         }
     )
 
@@ -111,11 +125,17 @@ async def validate_input(hass: HomeAssistant, data: dict) -> dict[str, Any]:
         api_username=api_username or None,
         api_password=api_password or None,
         auto_enable_modbus=data.get(CONF_AUTO_ENABLE_MODBUS, DEFAULT_AUTO_ENABLE_MODBUS),
+        restrict_modbus_to_this_ip=data.get(
+            CONF_RESTRICT_MODBUS_TO_THIS_IP,
+            DEFAULT_RESTRICT_MODBUS_TO_THIS_IP,
+        ),
     )
     try:
         if api_username and not await hub.validate_web_api():
             raise InvalidApiCredentials
         await hub.init_data(setup_coordinator=False)
+    except ClientIpResolutionError:
+        raise CannotResolveLocalIp
     except Exception as e:
         _LOGGER.error(f"Cannot start hub {e}")
         if isinstance(e, InvalidApiCredentials):
@@ -184,6 +204,8 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 errors["base"] = "missing_api_password"
             except InvalidApiCredentials:
                 errors["base"] = "invalid_api_credentials"
+            except CannotResolveLocalIp:
+                errors["base"] = "cannot_resolve_local_ip"
             except UnsupportedHardware:
                 errors["base"] = "unsupported_hardware"
             except AddressesNotUnique:
@@ -229,6 +251,8 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 errors["base"] = "missing_api_password"
             except InvalidApiCredentials:
                 errors["base"] = "invalid_api_credentials"
+            except CannotResolveLocalIp:
+                errors["base"] = "cannot_resolve_local_ip"
             except UnsupportedHardware:
                 errors["base"] = "unsupported_hardware"
             except AddressesNotUnique:
@@ -274,6 +298,8 @@ class FroniusModbusOptionsFlow(config_entries.OptionsFlow):
                 errors["base"] = "missing_api_password"
             except InvalidApiCredentials:
                 errors["base"] = "invalid_api_credentials"
+            except CannotResolveLocalIp:
+                errors["base"] = "cannot_resolve_local_ip"
             except UnsupportedHardware:
                 errors["base"] = "unsupported_hardware"
             except AddressesNotUnique:
@@ -311,3 +337,6 @@ class MissingApiPassword(exceptions.HomeAssistantError):
 
 class InvalidApiCredentials(exceptions.HomeAssistantError):
     """Error to indicate Fronius web API credentials are invalid."""
+
+class CannotResolveLocalIp(exceptions.HomeAssistantError):
+    """Error to indicate the local IP for Modbus restriction cannot be resolved."""

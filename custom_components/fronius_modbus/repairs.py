@@ -3,8 +3,9 @@ from __future__ import annotations
 from typing import Any
 
 from homeassistant.components.repairs import RepairsFlow
+from homeassistant.helpers import issue_registry as ir
 
-from .const import MIGRATION_RECONFIGURE_ISSUE_ID_PREFIX
+from .const import DOMAIN, MIGRATION_RECONFIGURE_ISSUE_ID_PREFIX
 from .flow_common import TokenFlowMixin, async_update_entry_from_input, entry_defaults
 
 
@@ -15,6 +16,12 @@ class FroniusReconfigureRepairFlow(TokenFlowMixin, RepairsFlow):
         self._entry_id = entry_id
         self._pending_flow_state = None
 
+    def _issue_id(self) -> str:
+        return f"{MIGRATION_RECONFIGURE_ISSUE_ID_PREFIX}{self._entry_id}"
+
+    def _resolve_issue(self) -> None:
+        ir.async_delete_issue(self.hass, DOMAIN, self._issue_id())
+
     async def _async_finish_repair(
         self,
         settings,
@@ -24,7 +31,8 @@ class FroniusReconfigureRepairFlow(TokenFlowMixin, RepairsFlow):
         del info
         entry = self.hass.config_entries.async_get_entry(self._entry_id)
         if entry is None:
-            return self.async_abort(reason="entry_not_found")
+            self._resolve_issue()
+            return self.async_create_entry(title="", data={})
 
         await async_update_entry_from_input(
             self.hass,
@@ -32,12 +40,14 @@ class FroniusReconfigureRepairFlow(TokenFlowMixin, RepairsFlow):
             settings,
             previous_host=previous_host,
         )
+        self._resolve_issue()
         return self.async_create_entry(title="", data={})
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None):
         entry = self.hass.config_entries.async_get_entry(self._entry_id)
         if entry is None:
-            return self.async_abort(reason="entry_not_found")
+            self._resolve_issue()
+            return self.async_create_entry(title="", data={})
 
         defaults = entry_defaults(entry)
         return await self._async_handle_settings_step(

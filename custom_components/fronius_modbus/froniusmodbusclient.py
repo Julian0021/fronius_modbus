@@ -15,6 +15,8 @@ from .froniusmodbusclient_const import (
     METER_ADDRESS,
     EXPORT_LIMIT_RATE_ADDRESS,
     EXPORT_LIMIT_ENABLE_ADDRESS,
+    OUT_PF_SET_ADDRESS,
+    OUT_PF_SET_ENABLE_ADDRESS,
     CONN_ADDRESS,
     SUNSPEC_ID_ADDRESS,
     SUNSPEC_FIRST_MODEL_HEADER_ADDRESS,
@@ -164,6 +166,49 @@ class FroniusModbusClient(ExtModbusClient):
         if percent is None or max_power_w is None:
             return None
         return int(round(max_power_w * percent / 100.0))
+
+    def _get_power_factor_sf(self) -> Optional[int]:
+        value = self.data.get("power_factor_sf")
+        if not self.is_numeric(value):
+            return None
+        power_factor_sf = int(value)
+        if power_factor_sf < -6 or power_factor_sf > 6:
+            _LOGGER.error("Invalid power factor scale factor: %s", power_factor_sf)
+            return None
+        return power_factor_sf
+
+    def _power_factor_raw_to_value(self, raw_value: int) -> Optional[float]:
+        power_factor_sf = self._get_power_factor_sf()
+        if power_factor_sf is None or not self.is_numeric(raw_value):
+            return None
+
+        value = float(raw_value) * (10 ** power_factor_sf)
+        if value < -1 or value > 1:
+            _LOGGER.error(
+                "Power factor out of range: raw=%s sf=%s value=%s",
+                raw_value,
+                power_factor_sf,
+                value,
+            )
+            return None
+        return round(value, max(0, -power_factor_sf))
+
+    def _power_factor_value_to_raw(self, value: float) -> Optional[int]:
+        if not self.is_numeric(value):
+            return None
+
+        numeric_value = float(value)
+        if numeric_value < -1 or numeric_value > 1:
+            return None
+
+        power_factor_sf = self._get_power_factor_sf()
+        if power_factor_sf is None:
+            return None
+
+        raw_value = int(round(numeric_value / (10 ** power_factor_sf)))
+        if raw_value < -32768 or raw_value > 32767:
+            return None
+        return raw_value
 
     def _export_limit_watts_to_raw(self, watts: float) -> Optional[int]:
         if not self.is_numeric(watts):
@@ -513,15 +558,20 @@ class FroniusModbusClient(ExtModbusClient):
 
         Conn = self._client.convert_from_registers(regs[2:3], data_type = self._client.DATATYPE.UINT16)
         WMaxLim_Ena = self._client.convert_from_registers(regs[7:8], data_type = self._client.DATATYPE.UINT16)
+        OutPFSet = self._client.convert_from_registers(regs[8:9], data_type = self._client.DATATYPE.INT16)
         OutPFSet_Ena = self._client.convert_from_registers(regs[12:13], data_type = self._client.DATATYPE.UINT16)
         VArPct_Ena = self._client.convert_from_registers(regs[20:21], data_type = self._client.DATATYPE.INT16)
         WMaxLimPct_SF = self._client.convert_from_registers(regs[21:22], data_type = self._client.DATATYPE.INT16)
+        OutPFSet_SF = self._client.convert_from_registers(regs[22:23], data_type = self._client.DATATYPE.INT16)
 
         self.data['Conn'] = self._map_value(CONTROL_STATUS, Conn, 'connection control')
         self.data['WMaxLim_Ena'] = self._map_value(CONTROL_STATUS, WMaxLim_Ena, 'throttle control')
         self.data['OutPFSet_Ena'] = self._map_value(CONTROL_STATUS, OutPFSet_Ena, 'fixed power factor')
+        self.data['power_factor_enable'] = self.data['OutPFSet_Ena']
         self.data['VArPct_Ena'] = self._map_value(CONTROL_STATUS, VArPct_Ena, 'VAr control')
         self.data['ac_limit_rate_sf'] = WMaxLimPct_SF
+        self.data['power_factor_sf'] = OutPFSet_SF
+        self.data['power_factor'] = self._power_factor_raw_to_value(OutPFSet)
 
         return True
 
@@ -959,6 +1009,32 @@ class FroniusModbusClient(ExtModbusClient):
             _LOGGER.error(f'Attempted to set to unsupported storage control mode. Value: {mode}')
             return
         await self.write_registers(unit_id=self._inverter_unit_id, address=self._storage_register_address(3), payload=[mode])
+
+    async def set_power_factor(self, power_factor: float):
+        raw_value = self._power_factor_value_to_raw(power_factor)
+        if raw_value is None:
+            raise ValueError('Power factor must be between -1 and 1')
+        if raw_value < 0:
+            raw_value = 65536 + raw_value
+        await self.write_registers(
+            unit_id=self._inverter_unit_id,
+            address=OUT_PF_SET_ADDRESS,
+            payload=[raw_value],
+        )
+        self.data['power_factor'] = self._power_factor_raw_to_value(
+            raw_value if raw_value < 32768 else raw_value - 65536
+        )
+
+    async def set_power_factor_enable(self, enable: int):
+        if enable not in [0, 1]:
+            raise ValueError(f'Unsupported power factor control state: {enable}')
+        await self.write_registers(
+            unit_id=self._inverter_unit_id,
+            address=OUT_PF_SET_ENABLE_ADDRESS,
+            payload=[enable],
+        )
+        self.data['OutPFSet_Ena'] = self._map_value(CONTROL_STATUS, enable, 'fixed power factor')
+        self.data['power_factor_enable'] = self.data['OutPFSet_Ena']
 
     async def set_minimum_reserve(self, minimum_reserve: float):
         if not float(minimum_reserve).is_integer():

@@ -171,6 +171,8 @@ Note to change the mode first then set controls active in that mode.
 | --------------- | ---------------------------------------------------------------------------------------------------------------------------- |
 | AC Limit Enable | Allows limiting inverter AC output. Enable this setting first, and then set the AC limit below.                              |
 | AC Limit Rate   | Sets the AC limit in watts. Internally this is mapped to SunSpec `WMaxLimPct` (% of `WMax`) using the inverter scale factor. |
+| Power Factor Control | Enables or disables the Modbus fixed power factor control (`OutPFSet_Ena`).                                              |
+| Power Factor    | Fixed power factor (`OutPFSet`). Range is `-1.0` to `1.0`. Negative values are over-excited, positive values are under-excited. |
 
 # Example Devices
 

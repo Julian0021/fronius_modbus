@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from datetime import timedelta
 from typing import Any
 from importlib.metadata import version
@@ -47,6 +48,9 @@ WEB_API_DATA_KEYS = (
     "api_charge_from_grid",
 )
 
+BATTERY_WRITE_MODBUS_RECOVERY_SECONDS = 30.0
+BATTERY_WRITE_WEB_REFRESH_DELAY_SECONDS = 10.0
+
 
 class FroniusCoordinator(DataUpdateCoordinator):
     """Coordinator for Fronius Modbus data updates."""
@@ -80,49 +84,22 @@ class FroniusCoordinator(DataUpdateCoordinator):
 
     async def _async_update_data(self) -> dict:
         """Fetch all data from Fronius device."""
+        core_err: Exception | None = None
         try:
-            # Read inverter data
-            await self.hub._client.read_inverter_data()
-
-            # Read inverter status data
-            await self.hub._client.read_inverter_status_data()
-
-            # Read inverter model settings data
-            await self.hub._client.read_inverter_model_settings_data()
-
-            # Read inverter controls data
-            await self.hub._client.read_inverter_controls_data()
-
-            # Read meter data if configured
-            if self.hub._client.meter_configured:
-                for meter_idx, meter_address in enumerate(self.hub._client._meter_unit_ids, start=1):
-                    await self.hub._client.read_meter_data(
-                        meter_prefix=f"m{meter_idx}_",
-                        unit_id=meter_address
-                    )
-
-            # Read MPPT data if configured
-            if self.hub._client.mppt_configured:
-                await self.hub._client.read_mppt_data()
-
-            # Read export limit data
-            await self.hub._client.read_export_limit_data()
-
-            # Read storage data if configured
-            if self.hub._client.storage_configured:
-                await self.hub._client.read_inverter_storage_data()
-
-            # Read authenticated web API data if configured.
-            if self.hub.web_api_configured:
-                try:
-                    await self.hub.refresh_web_data()
-                except Exception as err:
-                    _LOGGER.warning("Fronius web API refresh failed: %s", err)
-
-            return self.hub.data
-
+            core_ok = await self.hub._client.read_inverter_data()
+            if not core_ok:
+                core_err = RuntimeError("Core inverter read returned no data")
         except Exception as err:
-            raise UpdateFailed(f"Fronius data update failed: {err}")
+            core_err = err
+
+        if core_err is not None:
+            if self.hub._handle_core_modbus_failure(core_err):
+                return self.hub.data
+            raise UpdateFailed(f"Fronius data update failed: {core_err}")
+
+        self.hub._handle_core_modbus_success()
+        await self.hub._async_refresh_optional_data()
+        return self.hub.data
 
 
 class Hub:
@@ -172,6 +149,9 @@ class Hub:
         self._scan_interval = timedelta(seconds=scan_interval)
         self.coordinator = None
         self._busy = False
+        self._battery_write_transition_until = 0.0
+        self._battery_write_transition_warned = False
+        self._delayed_web_refresh_task: asyncio.Task | None = None
 
     def toggle_busy(func):
         async def wrapper(self, *args, **kwargs):
@@ -240,9 +220,124 @@ class Hub:
             return False
         return await self._hass.async_add_executor_job(self._webclient.login)
 
+    async def _async_refresh_optional_data(self) -> None:
+        await self._async_optional_poll("inverter status", self._client.read_inverter_status_data)
+        await self._async_optional_poll("inverter settings", self._client.read_inverter_model_settings_data)
+        await self._async_optional_poll("inverter controls", self._client.read_inverter_controls_data)
+
+        if self._client.meter_configured:
+            for meter_idx, meter_address in enumerate(self._client._meter_unit_ids, start=1):
+                await self._async_optional_poll(
+                    f"meter {meter_idx}",
+                    self._client.read_meter_data,
+                    meter_prefix=f"m{meter_idx}_",
+                    unit_id=meter_address,
+                )
+
+        if self._client.mppt_configured:
+            await self._async_optional_poll("mppt", self._client.read_mppt_data)
+
+        await self._async_optional_poll("ac limit", self._client.read_export_limit_data)
+
+        if self._client.storage_configured:
+            await self._async_optional_poll("storage", self._client.read_inverter_storage_data)
+
+        if self.web_api_configured:
+            try:
+                await self.refresh_web_data()
+            except Exception as err:
+                _LOGGER.warning("Fronius web API refresh failed: %s", err)
+
+    async def _async_optional_poll(self, label: str, func, *args, **kwargs) -> bool:
+        try:
+            result = await func(*args, **kwargs)
+        except Exception as err:
+            _LOGGER.warning("Optional Fronius %s refresh failed: %s", label, err)
+            return False
+
+        if result is False:
+            _LOGGER.debug("Optional Fronius %s refresh returned no data", label)
+            return False
+        return True
+
     def _clear_web_api_data(self) -> None:
         for key in WEB_API_DATA_KEYS:
             self.data[key] = None
+
+    def _battery_write_transition_active(self) -> bool:
+        return time.monotonic() < self._battery_write_transition_until
+
+    def _clear_battery_write_transition(self) -> None:
+        self._battery_write_transition_until = 0.0
+        self._battery_write_transition_warned = False
+
+    def _schedule_delayed_web_refresh(self) -> None:
+        if self._delayed_web_refresh_task and not self._delayed_web_refresh_task.done():
+            self._delayed_web_refresh_task.cancel()
+
+        async def delayed_refresh() -> None:
+            try:
+                await asyncio.sleep(BATTERY_WRITE_WEB_REFRESH_DELAY_SECONDS)
+                if self._webclient:
+                    await self.refresh_web_data()
+            except asyncio.CancelledError:
+                raise
+            except Exception as err:
+                _LOGGER.warning("Delayed Fronius web API refresh failed: %s", err)
+
+        self._delayed_web_refresh_task = self._hass.loop.create_task(delayed_refresh())
+
+    def _start_battery_write_transition(self, source: str) -> None:
+        self._battery_write_transition_until = (
+            time.monotonic() + BATTERY_WRITE_MODBUS_RECOVERY_SECONDS
+        )
+        self._battery_write_transition_warned = False
+        self._client.close()
+        self._schedule_delayed_web_refresh()
+        _LOGGER.debug(
+            "Started Modbus recovery window after %s write for %s",
+            source,
+            self._host,
+        )
+
+    def _handle_core_modbus_success(self) -> None:
+        if self._battery_write_transition_active():
+            _LOGGER.debug("Modbus recovered after battery API write on %s", self._host)
+        self._clear_battery_write_transition()
+
+    def _handle_core_modbus_failure(self, err: Exception) -> bool:
+        if not self._battery_write_transition_active():
+            return False
+
+        if not self._battery_write_transition_warned:
+            _LOGGER.warning(
+                "Suppressing temporary Modbus outage after battery API write on %s: %s",
+                self._host,
+                err,
+            )
+            self._battery_write_transition_warned = True
+        else:
+            _LOGGER.debug(
+                "Modbus still recovering after battery API write on %s: %s",
+                self._host,
+                err,
+            )
+        return True
+
+    def _set_effective_api_battery_mode(
+        self,
+        raw_mode: int | None,
+        raw_soc_mode: str | None,
+    ) -> None:
+        effective_mode = self._derive_api_battery_mode(raw_mode, raw_soc_mode)
+        self.data['api_battery_mode_raw'] = raw_mode
+        self.data['api_battery_mode_effective_raw'] = effective_mode
+        self.data['api_battery_mode_consistent'] = effective_mode is not None
+        self.data['api_battery_mode'] = (
+            API_BATTERY_MODE.get(effective_mode) if effective_mode is not None else None
+        )
+        self.data['api_soc_mode_raw'] = raw_soc_mode
+        self.data['api_soc_mode'] = API_SOC_MODE.get(raw_soc_mode, raw_soc_mode)
 
     async def _async_handle_web_api_auth_failure(self, err: Exception) -> None:
         if not self._webclient:
@@ -298,14 +393,8 @@ class Hub:
             raw_soc_mode = None
 
         effective_mode = self._derive_api_battery_mode(raw_mode, raw_soc_mode)
-
-        self.data['api_battery_mode_raw'] = raw_mode
-        self.data['api_battery_mode_effective_raw'] = effective_mode
-        self.data['api_battery_mode_consistent'] = effective_mode is not None
-        self.data['api_battery_mode'] = API_BATTERY_MODE.get(effective_mode) if effective_mode is not None else None
+        self._set_effective_api_battery_mode(raw_mode, raw_soc_mode)
         self.data['api_battery_power'] = -raw_power if raw_power is not None else None
-        self.data['api_soc_mode_raw'] = raw_soc_mode
-        self.data['api_soc_mode'] = API_SOC_MODE.get(raw_soc_mode, raw_soc_mode)
         api_soc_min = self._as_int(battery_config.get('BAT_M0_SOC_MIN'))
         self.data['api_soc_min'] = api_soc_min
         self.data['soc_maximum'] = self._as_int(battery_config.get('BAT_M0_SOC_MAX'))
@@ -419,12 +508,12 @@ class Hub:
             next_backup_reserved,
             raise_on_auth_failure=True,
         )
-        self.data['api_soc_mode_raw'] = 'manual'
-        self.data['api_soc_mode'] = API_SOC_MODE['manual']
+        self._set_effective_api_battery_mode(1, 'manual')
         self.data['soc_minimum'] = next_soc_min
         self.data['api_soc_min'] = next_soc_min
         self.data['soc_maximum'] = next_soc_max
         self.data['api_backup_reserved'] = next_backup_reserved
+        self._start_battery_write_transition(control_name)
         return next_soc_min, next_soc_max, next_backup_reserved
 
     def check_pymodbus_version(self):
@@ -521,6 +610,8 @@ class Hub:
 
     def close(self):
         """Disconnect client."""
+        if self._delayed_web_refresh_task and not self._delayed_web_refresh_task.done():
+            self._delayed_web_refresh_task.cancel()
         self._client.close()
 
     @property
@@ -592,7 +683,6 @@ class Hub:
         self.data['soc_minimum'] = soc_minimum
         if self._webclient and self._api_battery_mode_is_manual():
             await self._set_api_soc_manual(soc_min=soc_minimum, control_name='SoC Minimum')
-            await self.refresh_web_data()
 
     @toggle_busy
     async def set_charge_limit(self, value):
@@ -615,18 +705,23 @@ class Hub:
         if not self._webclient:
             return
 
-        power = self._as_int(self.data.get('api_battery_power'))
-        if mode == 1 and power is None:
-            power = 0
-        if mode == 1 and power is not None:
-            power = -power
+        display_power = self._as_int(self.data.get('api_battery_power'))
+        if mode == 1 and display_power is None:
+            display_power = 0
+        power = -display_power if mode == 1 and display_power is not None else None
         await self._async_web_job(
             self._webclient.set_battery_config,
             mode,
-            power if mode == 1 else None,
+            power,
             raise_on_auth_failure=True,
         )
-        await self.refresh_web_data()
+        self._set_effective_api_battery_mode(mode, 'manual' if mode == 1 else 'auto')
+        if mode == 1:
+            self.data['api_battery_power'] = display_power
+        else:
+            self.data['api_soc_min'] = 5
+            self.data['soc_maximum'] = 100
+        self._start_battery_write_transition('Battery API mode')
 
     @toggle_busy
     async def set_api_battery_power(self, value: float):
@@ -641,7 +736,9 @@ class Hub:
             power,
             raise_on_auth_failure=True,
         )
-        await self.refresh_web_data()
+        self.data['api_battery_power'] = int(round(value))
+        self._set_effective_api_battery_mode(1, 'manual')
+        self._start_battery_write_transition('Target feed in')
 
     @toggle_busy
     async def set_api_soc_values(
@@ -655,7 +752,6 @@ class Hub:
             soc_max=soc_max,
             control_name='SoC Maximum',
         )
-        await self.refresh_web_data()
 
     async def _set_api_charge_sources(
         self,
@@ -689,7 +785,9 @@ class Hub:
             next_charge_from_ac,
             raise_on_auth_failure=True,
         )
-        await self.refresh_web_data()
+        self.data['api_charge_from_grid'] = next_charge_from_grid
+        self.data['api_charge_from_ac'] = next_charge_from_ac
+        self._start_battery_write_transition('battery charge source')
 
     @toggle_busy
     async def set_api_charge_sources(

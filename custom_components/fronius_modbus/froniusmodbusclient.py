@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import time
+from functools import wraps
 from typing import Optional
 from .extmodbusclient import ExtModbusClient
 
@@ -37,6 +38,32 @@ from .froniusmodbusclient_const import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _safe_read(label: str):
+    def decorator(func):
+        @wraps(func)
+        async def wrapper(self, *args, **kwargs):
+            try:
+                return await func(self, *args, **kwargs)
+            except Exception as err:
+                _LOGGER.warning(
+                    "Failed reading Fronius %s data from %s:%s: %s",
+                    label,
+                    self._host,
+                    self._port,
+                    err,
+                )
+                _LOGGER.debug(
+                    "Detailed Fronius %s read failure",
+                    label,
+                    exc_info=True,
+                )
+                return False
+
+        return wrapper
+
+    return decorator
 
 class FroniusModbusClient(ExtModbusClient):
     """Hub for BYD Battery Box Interface"""
@@ -320,6 +347,7 @@ class FroniusModbusClient(ExtModbusClient):
 
         return True
 
+    @_safe_read("device info")
     async def read_device_info_data(self, prefix, unit_id):
         regs = await self.get_registers(unit_id=unit_id, address=COMMON_ADDRESS, count=65)
         if regs is None:
@@ -341,6 +369,7 @@ class FroniusModbusClient(ExtModbusClient):
 
         return True
 
+    @_safe_read("inverter")
     async def read_inverter_data(self):
         regs = await self.get_registers(unit_id=self._inverter_unit_id, address=INVERTER_ADDRESS, count=50)
         if regs is None:
@@ -394,6 +423,7 @@ class FroniusModbusClient(ExtModbusClient):
 
         return True
 
+    @_safe_read("inverter nameplate")
     async def read_inverter_nameplate_data(self):
         """start reading storage data"""
         regs = await self.get_registers(unit_id=self._inverter_unit_id, address=NAMEPLATE_ADDRESS, count=120)
@@ -430,6 +460,7 @@ class FroniusModbusClient(ExtModbusClient):
 
         return True
 
+    @_safe_read("inverter status")
     async def read_inverter_status_data(self):
         regs = await self.get_registers(unit_id=self._inverter_unit_id, address=40183, count=44)
         if regs is None:
@@ -454,6 +485,7 @@ class FroniusModbusClient(ExtModbusClient):
 
         return True
 
+    @_safe_read("inverter settings")
     async def read_inverter_model_settings_data(self):
         regs = await self.get_registers(unit_id=self._inverter_unit_id, address=40151, count=30)
         if regs is None:
@@ -473,6 +505,7 @@ class FroniusModbusClient(ExtModbusClient):
 
         return True
 
+    @_safe_read("inverter controls")
     async def read_inverter_controls_data(self):
         regs = await self.get_registers(unit_id=self._inverter_unit_id, address=40229, count=24)
         if regs is None:
@@ -525,6 +558,7 @@ class FroniusModbusClient(ExtModbusClient):
         else:
             return value
 
+    @_safe_read("mppt")
     async def read_mppt_data(self):
         if not await self._scan_sunspec_models():
             return False
@@ -702,6 +736,7 @@ class FroniusModbusClient(ExtModbusClient):
 
         return True
 
+    @_safe_read("storage")
     async def read_inverter_storage_data(self):
         """start reading storage data"""
         regs = await self.get_registers(unit_id=self._inverter_unit_id, address=self._storage_address, count=24)
@@ -803,6 +838,7 @@ class FroniusModbusClient(ExtModbusClient):
 
         return True
 
+    @_safe_read("meter")
     async def read_meter_data(self, meter_prefix, unit_id):
         """start reading meter data"""
         regs = await self.get_registers(unit_id=unit_id, address=METER_ADDRESS, count=103)
@@ -885,6 +921,7 @@ class FroniusModbusClient(ExtModbusClient):
 
         return True
 
+    @_safe_read("ac limit")
     async def read_export_limit_data(self):
         """Read export limit control registers"""
         # Read export limit rate register (40232)
@@ -894,7 +931,11 @@ class FroniusModbusClient(ExtModbusClient):
             self.data['ac_limit_rate_raw'] = export_limit_rate_raw
             self.data['ac_limit_rate_pct'] = self._export_limit_raw_to_percent(export_limit_rate_raw)
             self.data['ac_limit_rate'] = self._export_limit_raw_to_watts(export_limit_rate_raw)
-        else:
+        elif (
+            'ac_limit_rate_raw' not in self.data
+            and 'ac_limit_rate_pct' not in self.data
+            and 'ac_limit_rate' not in self.data
+        ):
             self.data['ac_limit_rate_raw'] = None
             self.data['ac_limit_rate_pct'] = None
             self.data['ac_limit_rate'] = None
@@ -904,12 +945,12 @@ class FroniusModbusClient(ExtModbusClient):
             return True
 
         export_limit_enable_raw = await self._read_export_limit_enable_raw()
-        if export_limit_enable_raw is None:
-            self.data['ac_limit_enable'] = None
-        else:
+        if export_limit_enable_raw is not None:
             self.data['ac_limit_enable'] = EXPORT_LIMIT_STATUS.get(export_limit_enable_raw, 'Unknown')
             if export_limit_enable_raw == 1:
                 self._export_limit_enable_mask_until = 0.0
+        elif 'ac_limit_enable' not in self.data:
+            self.data['ac_limit_enable'] = None
 
         return True
 

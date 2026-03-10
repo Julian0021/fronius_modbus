@@ -814,5 +814,13 @@ class Hub:
     async def set_ac_limit_enable(self, value):
         await self._client.set_ac_limit_enable(value)
 
+    @toggle_busy
+    async def set_power_factor(self, value):
+        await self._client.set_power_factor(value)
+
+    @toggle_busy
+    async def set_power_factor_enable(self, value):
+        await self._client.set_power_factor_enable(value)
+
     async def set_conn_status(self, enable):
         await self._client.set_conn_status(enable)

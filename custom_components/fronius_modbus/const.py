@@ -76,10 +76,12 @@ STORAGE_API_NUMBER_TYPES = [
 
 INVERTER_NUMBER_TYPES = [
     ['AC limit rate', 'ac_limit_rate', {'min': 0, 'max': 50000, 'step': 10, 'mode':'box', 'unit': 'W', 'max_key': 'max_power'}],
+    ['Power factor', 'power_factor', {'min': -1, 'max': 1, 'step': 0.001, 'mode':'box', 'unit': None}],
 ]
 
 INVERTER_SELECT_TYPES = [
     ['AC limit enable', 'ac_limit_enable', {0: 'Disabled', 1: 'Enabled'}],
+    ['Power factor control', 'power_factor_enable', {0: 'Disabled', 1: 'Enabled'}],
     ['Inverter connection', 'Conn', {0: 'Disabled', 1: 'Enabled'}],
 ]
 
@@ -106,7 +108,7 @@ INVERTER_SENSOR_TYPES = {
 
     'Conn': ['Connection control', 'Conn', None, None, None, None, EntityCategory.DIAGNOSTIC],
     'WMaxLim_Ena': ['Throttle control', 'WMaxLim_Ena', None, None, None, None, EntityCategory.DIAGNOSTIC],
-    'OutPFSet_Ena': ['Fixed power factor', 'OutPFSet_Ena', None, None, None, None, EntityCategory.DIAGNOSTIC],
+    'OutPFSet_Ena': ['Fixed power factor status', 'OutPFSet_Ena', None, None, None, None, EntityCategory.DIAGNOSTIC],
     'VArPct_Ena': ['Limit VAr control', 'VArPct_Ena', None, None, None, None, EntityCategory.DIAGNOSTIC],
     'PhVphA': ['AC voltage L1-N', 'PhVphA', SensorDeviceClass.VOLTAGE, SensorStateClass.MEASUREMENT, 'V', 'mdi:lightning-bolt', None],
     'unit_id': ['Modbus ID', 'i_unit_id', None, None, None, None, EntityCategory.DIAGNOSTIC],

@@ -95,6 +95,8 @@ class FroniusModbusSelect(FroniusModbusBaseEntity, SelectEntity):
             await self._hub.set_api_battery_mode(new_mode)
         elif self._key == 'ac_limit_enable':
             await self._hub.set_ac_limit_enable(new_mode)
+        elif self._key == 'power_factor_enable':
+            await self._hub.set_power_factor_enable(new_mode)
         elif self._key == 'Conn':
             await self._hub.set_conn_status(new_mode)
 
@@ -109,4 +111,6 @@ class FroniusModbusSelect(FroniusModbusBaseEntity, SelectEntity):
             return False
         if self._key == 'api_battery_mode':
             return self._hub.web_api_configured and self._hub.storage_configured
+        if self._key == 'power_factor_enable':
+            return self.coordinator.data.get('power_factor_enable') is not None
         return True

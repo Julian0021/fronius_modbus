@@ -131,6 +131,8 @@ class FroniusModbusNumber(FroniusModbusBaseEntity, NumberEntity):
             await self._hub.set_grid_discharge_power(value)
         elif self._key == 'ac_limit_rate':
             await self._hub.set_ac_limit_rate(value)
+        elif self._key == 'power_factor':
+            await self._hub.set_power_factor(value)
         elif self._key == 'api_battery_power':
             await self._hub.set_api_battery_power(value)
         elif self._key == 'soc_maximum':
@@ -156,6 +158,8 @@ class FroniusModbusNumber(FroniusModbusBaseEntity, NumberEntity):
             return True
         if self._key == 'ac_limit_rate':
             return True
+        if self._key == 'power_factor':
+            return data.get('power_factor') is not None
         if self._key == 'api_battery_power':
             return (
                 self._hub.web_api_configured

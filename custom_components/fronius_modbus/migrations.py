@@ -26,6 +26,7 @@ from .const import (
     DEFAULT_RESTRICT_MODBUS_TO_THIS_IP,
     DOMAIN,
     MIGRATION_RECONFIGURE_ISSUE_ID_PREFIX,
+    METER_SENSOR_TYPES,
 )
 from .froniuswebclient import mint_token
 from .token_store import async_get_token_store
@@ -33,6 +34,9 @@ from .token_store import async_get_token_store
 _LOGGER = logging.getLogger(__name__)
 _LEGACY_POSITIONAL_METER_RE = re.compile(r".*_m\d+_.+")
 _LEGACY_POSITIONAL_METER_DEVICE_RE = re.compile(r".*_meter\d+")
+_CURRENT_STABLE_METER_RE = re.compile(
+    r".*_meter_\d+_(" + "|".join(re.escape(sensor_info[1]) for sensor_info in METER_SENSOR_TYPES.values()) + r")$"
+)
 
 LEGACY_MPPT_ENTITY_KEYS = (
     "mppt1_current",
@@ -158,6 +162,26 @@ def _is_legacy_positional_meter_device(device) -> bool:
         if identifier_domain == DOMAIN and _LEGACY_POSITIONAL_METER_DEVICE_RE.fullmatch(identifier):
             return True
     return False
+
+
+def _is_current_stable_meter_unique_id(unique_id: str) -> bool:
+    return bool(_CURRENT_STABLE_METER_RE.fullmatch(unique_id))
+
+
+async def _async_remove_current_meter_entities(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+) -> None:
+    registry = er.async_get(hass)
+    removed = 0
+    for entity_entry in er.async_entries_for_config_entry(registry, entry.entry_id):
+        unique_id = entity_entry.unique_id or ""
+        if _is_current_stable_meter_unique_id(unique_id):
+            registry.async_remove(entity_entry.entity_id)
+            removed += 1
+
+    if removed:
+        _LOGGER.info("Removed %s current meter entities for naming migration", removed)
 
 
 async def _async_update_entry_auth_state(
@@ -290,6 +314,14 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             options=new_options,
             version=1,
             minor_version=4,
+        )
+
+    if entry.version == 1 and entry.minor_version < 5:
+        await _async_remove_current_meter_entities(hass, entry)
+        hass.config_entries.async_update_entry(
+            entry,
+            version=1,
+            minor_version=5,
         )
 
     host = _entry_value(entry, CONF_HOST, "")

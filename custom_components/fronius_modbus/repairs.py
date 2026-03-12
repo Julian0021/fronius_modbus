@@ -5,8 +5,8 @@ from typing import Any
 from homeassistant.components.repairs import RepairsFlow
 from homeassistant.helpers import issue_registry as ir
 
+from .config_flow import TokenFlowMixin, async_update_entry_from_input, entry_defaults
 from .const import DOMAIN, MIGRATION_RECONFIGURE_ISSUE_ID_PREFIX
-from .flow_common import TokenFlowMixin, async_update_entry_from_input, entry_defaults
 
 
 class FroniusReconfigureRepairFlow(TokenFlowMixin, RepairsFlow):
@@ -56,6 +56,7 @@ class FroniusReconfigureRepairFlow(TokenFlowMixin, RepairsFlow):
             password_step_id="password",
             defaults=defaults,
             previous_host=defaults["host"],
+            previous_settings=defaults,
             on_success=self._async_finish_repair,
         )
 

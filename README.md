@@ -36,7 +36,7 @@ After reboot of Home-Assistant, this integration can be configured through the i
 
 If you provide the inverter Web API customer password in the integration setup, the integration can:
 
-- auto-enable Modbus TCP during setup/reload
+- auto-enable Modbus TCP during setup and relevant configuration changes
 - optionally restrict auto-enabled Modbus TCP to the Home Assistant host IP
 - expose authenticated battery controls from `/api/config/batteries`
 - expose Modbus service diagnostics from `/api/config/modbus`

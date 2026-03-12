@@ -6,14 +6,14 @@ from urllib.parse import urlparse
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
 
-from .const import DOMAIN, FIXED_API_USERNAME
+from .const import API_USERNAME, DOMAIN
 
 _TOKEN_STORE_KEY = f"{DOMAIN}_web_api_tokens"
 _TOKEN_STORE_VERSION = 1
 _TOKEN_STORE_DATA_KEY = "web_api_token_store"
 
 
-def _token_key(host: str, user: str = FIXED_API_USERNAME) -> str:
+def _token_key(host: str, user: str = API_USERNAME) -> str:
     if "://" not in host:
         host = f"http://{host}"
     return f"{urlparse(host).netloc.lower()}:{user}"
@@ -30,7 +30,7 @@ class FroniusTokenStore:
             self._cache = loaded if isinstance(loaded, dict) else {}
         return self._cache
 
-    async def async_load_token(self, host: str, user: str = FIXED_API_USERNAME) -> dict[str, str] | None:
+    async def async_load_token(self, host: str, user: str = API_USERNAME) -> dict[str, str] | None:
         data = await self._async_load_all()
         token = data.get(_token_key(host, user))
         if not isinstance(token, dict):
@@ -41,7 +41,7 @@ class FroniusTokenStore:
             return None
         return {"realm": realm, "token": secret}
 
-    async def async_has_token(self, host: str, user: str = FIXED_API_USERNAME) -> bool:
+    async def async_has_token(self, host: str, user: str = API_USERNAME) -> bool:
         return await self.async_load_token(host, user) is not None
 
     async def async_save_token(
@@ -49,13 +49,13 @@ class FroniusTokenStore:
         host: str,
         realm: str,
         token: str,
-        user: str = FIXED_API_USERNAME,
+        user: str = API_USERNAME,
     ) -> None:
         data = await self._async_load_all()
         data[_token_key(host, user)] = {"realm": realm, "token": token}
         await self._store.async_save(data)
 
-    async def async_delete_token(self, host: str, user: str = FIXED_API_USERNAME) -> None:
+    async def async_delete_token(self, host: str, user: str = API_USERNAME) -> None:
         data = await self._async_load_all()
         if data.pop(_token_key(host, user), None) is not None:
             await self._store.async_save(data)

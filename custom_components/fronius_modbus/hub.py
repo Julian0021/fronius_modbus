@@ -21,7 +21,7 @@ from .const import (
     API_SOC_MODE,
     DOMAIN,
     ENTITY_PREFIX,
-    FIXED_API_USERNAME,
+    API_USERNAME,
     MIGRATION_RECONFIGURE_ISSUE_ID_PREFIX,
 )
 from .token_store import async_get_token_store
@@ -174,11 +174,12 @@ class Hub:
         self,
         config_entry: ConfigEntry | None = None,
         setup_coordinator: bool = True,
+        apply_modbus_config: bool = False,
     ):
         """Initialize data and coordinator."""
         self._config_entry = config_entry
         await self._hass.async_add_executor_job(self.check_pymodbus_version)
-        if self.web_api_configured and self._auto_enable_modbus:
+        if apply_modbus_config and self.web_api_configured and self._auto_enable_modbus:
             enabled = await self._async_web_job(
                 self._webclient.ensure_modbus_enabled,
                 self._port,
@@ -346,7 +347,7 @@ class Hub:
         _LOGGER.warning("Disabling Fronius web API for %s after auth failure: %s", self._host, err)
         self._webclient = None
         self._clear_web_api_data()
-        await async_get_token_store(self._hass).async_delete_token(self._host, FIXED_API_USERNAME)
+        await async_get_token_store(self._hass).async_delete_token(self._host, API_USERNAME)
 
         if self._config_entry is not None:
             ir.async_create_issue(

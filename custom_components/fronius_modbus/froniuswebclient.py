@@ -14,7 +14,7 @@ import requests
 from requests.auth import AuthBase
 from requests.utils import parse_dict_header
 
-from .const import FIXED_API_USERNAME
+from .const import API_USERNAME
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -258,7 +258,7 @@ class FroniusWebClient:
         timeout: float = 4.0,
     ) -> None:
         self._host = host
-        self._username = FIXED_API_USERNAME
+        self._username = API_USERNAME
         self._password = password
         self._timeout = timeout
         self._auth = XHeaderDigestAuth(self._username, password=password, token=token, timeout=self._timeout)

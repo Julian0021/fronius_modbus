@@ -122,7 +122,7 @@ async def async_setup_entry(
                 sensor = FroniusModbusSensor(
                     coordinator=coordinator,
                     device_info=hub.get_device_info_meter(meter_unit_id),
-                    name=f'Meter {meter_unit_id} ' + sensor_info[0],
+                    name=sensor_info[0],
                     key=f"{prefix}" + sensor_info[1],
                     device_class=sensor_info[2],
                     state_class=sensor_info[3],

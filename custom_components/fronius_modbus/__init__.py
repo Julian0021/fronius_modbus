@@ -25,7 +25,7 @@ from .const import (
     DEFAULT_RESTRICT_MODBUS_TO_THIS_IP,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
-    FIXED_API_USERNAME,
+    API_USERNAME,
     MIGRATION_RECONFIGURE_ISSUE_ID_PREFIX,
 )
 from .froniuswebclient import mint_token
@@ -176,7 +176,7 @@ async def _async_prepare_entry_token(
     host: str,
 ) -> dict[str, str] | None:
     token_store = async_get_token_store(hass)
-    token = await token_store.async_load_token(host, FIXED_API_USERNAME)
+    token = await token_store.async_load_token(host, API_USERNAME)
     saved_password = str(_entry_value(entry, CONF_API_PASSWORD, "") or "").strip()
 
     if token is None and saved_password:
@@ -184,7 +184,7 @@ async def _async_prepare_entry_token(
             token = await hass.async_add_executor_job(
                 mint_token,
                 host,
-                FIXED_API_USERNAME,
+                API_USERNAME,
                 saved_password,
             )
         except Exception as err:
@@ -194,7 +194,7 @@ async def _async_prepare_entry_token(
                 host,
                 realm=token["realm"],
                 token=token["token"],
-                user=FIXED_API_USERNAME,
+                user=API_USERNAME,
             )
 
     await _async_update_entry_auth_state(
@@ -249,11 +249,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: HubConfigEntry) -> bool:
     port = _entry_value(entry, CONF_PORT, DEFAULT_PORT)
     inverter_unit_id = _entry_value(entry, CONF_INVERTER_UNIT_ID, DEFAULT_INVERTER_UNIT_ID)
     scan_interval = _entry_value(entry, CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
-    auto_enable_modbus = _entry_value(
-        entry,
-        CONF_AUTO_ENABLE_MODBUS,
-        DEFAULT_AUTO_ENABLE_MODBUS,
-    )
     restrict_modbus_to_this_ip = _entry_value(
         entry,
         CONF_RESTRICT_MODBUS_TO_THIS_IP,
@@ -280,9 +275,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: HubConfigEntry) -> bool:
         inverter_unit_id=inverter_unit_id,
         meter_unit_ids=meter_unit_ids,
         scan_interval=scan_interval,
-        api_username=FIXED_API_USERNAME if api_token else None,
+        api_username=API_USERNAME if api_token else None,
         api_token=api_token,
-        auto_enable_modbus=auto_enable_modbus,
+        auto_enable_modbus=False,
         restrict_modbus_to_this_ip=restrict_modbus_to_this_ip,
     )
 

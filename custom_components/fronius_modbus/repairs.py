@@ -57,6 +57,7 @@ class FroniusReconfigureRepairFlow(TokenFlowMixin, RepairsFlow):
             defaults=defaults,
             previous_host=defaults["host"],
             previous_settings=defaults,
+            force_apply_modbus_config=True,
             on_success=self._async_finish_repair,
         )
 

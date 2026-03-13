@@ -22,7 +22,6 @@ from .const import (
     CONF_RECONFIGURE_REQUIRED,
     CONF_RESTRICT_MODBUS_TO_THIS_IP,
     DEFAULT_AUTO_ENABLE_MODBUS,
-    DEFAULT_METER_UNIT_IDS,
     DEFAULT_RESTRICT_MODBUS_TO_THIS_IP,
     DOMAIN,
     MIGRATION_RECONFIGURE_ISSUE_ID_PREFIX,
@@ -129,27 +128,6 @@ def _parse_current_mppt_unique_id(
     if separator == "" or not module_idx.isdigit():
         return None
     return int(module_idx) + 1
-
-
-def _entry_meter_unit_ids(entry: ConfigEntry) -> list[int]:
-    meter_unit_ids = _entry_value(entry, CONF_METER_UNIT_IDS)
-    if isinstance(meter_unit_ids, list):
-        normalized: list[int] = []
-        for unit_id in meter_unit_ids:
-            try:
-                unit_id_int = int(unit_id)
-            except (TypeError, ValueError):
-                continue
-            if unit_id_int > 0:
-                normalized.append(unit_id_int)
-        return normalized
-
-    meter_unit_id = _entry_value(entry, CONF_METER_UNIT_ID, DEFAULT_METER_UNIT_IDS[0])
-    try:
-        meter_unit_id = int(meter_unit_id)
-    except (TypeError, ValueError):
-        meter_unit_id = DEFAULT_METER_UNIT_IDS[0]
-    return [meter_unit_id] if meter_unit_id > 0 else []
 
 
 def _is_legacy_positional_meter_unique_id(unique_id: str) -> bool:
@@ -301,13 +279,12 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         )
 
     if entry.version == 1 and entry.minor_version < 4:
-        meter_unit_ids = _entry_meter_unit_ids(entry)
         new_data = {**entry.data}
         new_options = {**entry.options}
-        new_data[CONF_METER_UNIT_IDS] = meter_unit_ids
         new_data.pop(CONF_METER_UNIT_ID, None)
+        new_data.pop(CONF_METER_UNIT_IDS, None)
         new_options.pop(CONF_METER_UNIT_ID, None)
-
+        new_options.pop(CONF_METER_UNIT_IDS, None)
         hass.config_entries.async_update_entry(
             entry,
             data=new_data,
@@ -338,6 +315,21 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             entry,
             version=1,
             minor_version=7,
+        )
+
+    if entry.version == 1 and entry.minor_version < 8:
+        new_data = {**entry.data}
+        new_options = {**entry.options}
+        new_data.pop(CONF_METER_UNIT_ID, None)
+        new_data.pop(CONF_METER_UNIT_IDS, None)
+        new_options.pop(CONF_METER_UNIT_ID, None)
+        new_options.pop(CONF_METER_UNIT_IDS, None)
+        hass.config_entries.async_update_entry(
+            entry,
+            data=new_data,
+            options=new_options,
+            version=1,
+            minor_version=8,
         )
 
     host = _entry_value(entry, CONF_HOST, "")

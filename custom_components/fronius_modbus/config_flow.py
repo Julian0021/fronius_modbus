@@ -385,6 +385,7 @@ class TokenFlowMixin:
         defaults: dict[str, Any],
         previous_host: str | None,
         previous_settings: dict[str, Any] | None,
+        force_apply_modbus_config: bool = False,
         on_success: _FlowFinishCallback,
     ):
         errors: dict[str, str] = {}
@@ -393,7 +394,7 @@ class TokenFlowMixin:
             try:
                 settings = _expand_settings_input(user_input, defaults)
                 _validate_static_input(settings)
-                apply_modbus_config = _should_apply_modbus_config(
+                apply_modbus_config = force_apply_modbus_config or _should_apply_modbus_config(
                     settings,
                     previous_settings,
                 )
@@ -506,6 +507,7 @@ class ConfigFlow(TokenFlowMixin, config_entries.ConfigFlow, domain=DOMAIN):
             defaults=_default_payload(),
             previous_host=None,
             previous_settings=None,
+            force_apply_modbus_config=True,
             on_success=self._async_finish_user,
         )
 
@@ -527,6 +529,7 @@ class ConfigFlow(TokenFlowMixin, config_entries.ConfigFlow, domain=DOMAIN):
             defaults=defaults,
             previous_host=defaults[CONF_HOST],
             previous_settings=defaults,
+            force_apply_modbus_config=True,
             on_success=self._async_finish_reconfigure,
         )
 

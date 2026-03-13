@@ -128,7 +128,7 @@ class Hub:
         self._host = host
         self._port = port
         self._inverter_unit_id = inverter_unit_id
-        self._meter_unit_ids = meter_unit_ids
+        self._meter_unit_ids = list(meter_unit_ids)
         self._entity_prefix = f'{ENTITY_PREFIX}_{name.lower()}_'
         self._config_entry: ConfigEntry | None = None
         self._auto_enable_modbus = auto_enable_modbus
@@ -183,21 +183,22 @@ class Hub:
         self._config_entry = config_entry
         await self._hass.async_add_executor_job(self.check_pymodbus_version)
         if apply_modbus_config and self.web_api_configured and self._auto_enable_modbus:
-            if len(self._meter_unit_ids) > 1:
-                _LOGGER.info(
-                    "Applying Modbus web configuration for primary meter %s only; additional configured meters are not programmed via web API",
-                    self._meter_unit_ids[0],
-                )
             enabled = await self._async_web_job(
                 self._webclient.ensure_modbus_enabled,
                 self._port,
-                self._meter_unit_ids[0] if self._meter_unit_ids else 200,
+                self._client.primary_meter_unit_id,
                 self._inverter_unit_id,
                 self._restrict_modbus_to_this_ip,
             )
             if enabled:
                 await asyncio.sleep(1.0)
         await self._client.init_data()
+        if self._client.meter_configured and self._client.primary_meter_unit_id not in self._client._meter_unit_ids:
+            _LOGGER.warning(
+                "Discovered secondary meter unit ids %s, but primary meter unit id %s is missing; Load and Grid status will stay unavailable",
+                self._client._meter_unit_ids,
+                self._client.primary_meter_unit_id,
+            )
 
         if self.storage_configured:
             self._client.reset_storage_info()
@@ -235,12 +236,16 @@ class Hub:
         await self._async_optional_poll("inverter controls", self._client.read_inverter_controls_data)
 
         if self._client.meter_configured:
-            for meter_idx, meter_address in enumerate(self._client._meter_unit_ids, start=1):
+            if self._client.primary_meter_unit_id not in self._client._meter_unit_ids:
+                self.data["load"] = None
+                self.data["grid_status"] = None
+
+            for meter_address in self._client._meter_unit_ids:
                 await self._async_optional_poll(
                     f"meter {meter_address}",
                     self._client.read_meter_data,
                     unit_id=meter_address,
-                    is_primary=meter_idx == 1,
+                    is_primary=meter_address == self._client.primary_meter_unit_id,
                 )
 
         if self._client.mppt_configured:
@@ -598,7 +603,7 @@ class Hub:
     def get_device_info_meter(self, unit_id: int) -> dict:
         prefix = self._meter_prefix(unit_id)
         try:
-            meter_position = self._meter_unit_ids.index(unit_id) + 1
+            meter_position = self._client._meter_unit_ids.index(unit_id) + 1
         except ValueError:
             meter_position = 1
         return {

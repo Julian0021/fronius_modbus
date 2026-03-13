@@ -45,10 +45,6 @@ The Web API username is fixed to `customer`.
 The integration stores a derived digest token in Home Assistant storage and does not keep the password in the config entry.
 During setup, reconfigure, options, or Repairs, the password is only requested if no stored token exists for the selected host or the existing token must be refreshed.
 
-The setup UI accepts `Meter Modbus IDs` as a comma-separated list such as `200,201`.
-The first configured meter is the primary meter and is used for derived values like `Load` and `Grid status`.
-If Web API-assisted Modbus setup is used with multiple meters, only the primary meter ID is programmed through `/api/config/modbus`.
-
 ### Migrating Older Entries
 
 Entries created with older Modbus-only versions are migrated with safe defaults and keep working temporarily.
@@ -80,51 +76,51 @@ The only built-in cross-protocol synchronization is the SoC minimum:
 
 ### Controls
 
-| Entity               | Description                                                                                                                                                      |
-| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Discharge Limit      | This is maxium discharging power in watts of which the battery can be discharged by.                                                                             |
-| Grid Charge Power    | The charging power in watts when the storage is being charged from the grid. Note that grid charging is seems to be limited to an effictive 50% by the hardware. |
-| Grid Discharge Power | The discharging power in watts when the storage is being discharged to the grid.                                                                                 |
+| Entity               | Description                                                                                                                                                             |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Discharge Limit      | This is maxium discharging power in watts of which the battery can be discharged by.                                                                                    |
+| Grid Charge Power    | The charging power in watts when the storage is being charged from the grid. Note that grid charging is seems to be limited to an effictive 50% by the hardware.        |
+| Grid Discharge Power | The discharging power in watts when the storage is being discharged to the grid.                                                                                        |
 | SoC Minimum          | Shared minimum SoC control. On the Web API side this corresponds to `BAT_M0_SOC_MIN`. Whole numbers only. In manual API mode it must not be greater than `SoC Maximum`. |
-| PV Charge Limit      | This is maximum PV charging power in watts of which the battery can be charged by.                                                                               |
+| PV Charge Limit      | This is maximum PV charging power in watts of which the battery can be charged by.                                                                                      |
 
 ### Battery API Controls
 
-| Entity           | Description                                                                                                                                                                                                                                                                                    |
-| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Battery API Mode | Fronius Web API battery mode: `Auto` or `Manual`.                                                                                                                                                                                                                                              |
-| Charge from AC   | Web API toggle for `HYB_BM_CHARGEFROMAC`. This is also auto-enabled when Modbus `Charge from Grid` is selected from the integration. Turning it off disables both charge-source flags.                                                                                                         |
-| Charge from grid | Web API toggle for `HYB_EVU_CHARGEFROMGRID`. Turning it on also enables `Charge from AC`. Turning it off only disables the grid flag. This is also auto-enabled when Modbus `Charge from Grid` is selected from the integration.                                                                |
+| Entity           | Description                                                                                                                                                                                                                                                                                                                                                            |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Battery API Mode | Fronius Web API battery mode: `Auto` or `Manual`.                                                                                                                                                                                                                                                                                                                      |
+| Charge from AC   | Web API toggle for `HYB_BM_CHARGEFROMAC`. This is also auto-enabled when Modbus `Charge from Grid` is selected from the integration. Turning it off disables both charge-source flags.                                                                                                                                                                                 |
+| Charge from grid | Web API toggle for `HYB_EVU_CHARGEFROMGRID`. Turning it on also enables `Charge from AC`. Turning it off only disables the grid flag. This is also auto-enabled when Modbus `Charge from Grid` is selected from the integration.                                                                                                                                       |
 | Target Feed In   | Manual Fronius target feed-in in watts. Positive values target feed-in watts. Negative values target grid consumption watts, and the inverter will target that grid consumption even when PV power is available. This setting is ignored by the inverter when battery charging is unavailable. It is disabled unless `HYB_EM_MODE=1` and `BAT_M0_SOC_MODE=\"manual\"`. |
-| SoC Maximum      | `BAT_M0_SOC_MAX` from the Web API. Only available when `HYB_EM_MODE=1` and `BAT_M0_SOC_MODE=\"manual\"`, and it must not be set below `SoC Minimum`.                                                                                                                                        |
+| SoC Maximum      | `BAT_M0_SOC_MAX` from the Web API. Only available when `HYB_EM_MODE=1` and `BAT_M0_SOC_MODE=\"manual\"`, and it must not be set below `SoC Minimum`.                                                                                                                                                                                                                   |
 
 ### Storage Control Modes
 
-| Mode                          | Description                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Auto                          | The storage will allow charging and discharging down to the configured `SoC Minimum`.                                                                                                                                                                                                                                                                                                                                                           |
-| PV Charge Limit               | The storage can be charged with PV power at a limited rate. Limit will be set to maximum power after change.                                                                                                                                                                                                                                                                                                                                    |
-| Discharge Limit               | The storage can be charged with PV power and discharged at a limited rate. in Fronius Web UI. Limit will be set to maximum power after change.                                                                                                                                                                                                                                                                                                  |
-| PV Charge and Discharge Limit | Allows setting both PV charge and discharge limits. Limits will be set to maximum power after change.                                                                                                                                                                                                                                                                                                                                           |
+| Mode                          | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Auto                          | The storage will allow charging and discharging down to the configured `SoC Minimum`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| PV Charge Limit               | The storage can be charged with PV power at a limited rate. Limit will be set to maximum power after change.                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| Discharge Limit               | The storage can be charged with PV power and discharged at a limited rate. in Fronius Web UI. Limit will be set to maximum power after change.                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| PV Charge and Discharge Limit | Allows setting both PV charge and discharge limits. Limits will be set to maximum power after change.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | Charge from Grid              | The storage will be charged from the grid using the charge rate from 'Grid Charge Power'. Power will be set 0 after change. Set the Grid Charge Power to a number in Watts, in a multiple of '10'. If the number is not rounded to 10, it will not work and does odd things like charging at 500W. If you need to press 'increment' to get it to charge, its likely the 10 issue. You do not need to fiddle with the 'Minimum Reserve' setting. When this mode is selected from the integration and Web API is configured, `Charge from grid` and `Charge from AC` are also enabled. |
-| Discharge to Grid             | The storage will discharge to the gird using the discharge rate from 'Gird Discharge Power'. Power will be set 0 after change.                                                                                                                                                                                                                                                                                                                  |
-| Block discharging             | The storage can only be charged with PV power. Charge limit will be set to maximum power.                                                                                                                                                                                                                                                                                                                                                       |
-| Block charging                | The can only be discharged and won't be charged with PV power. Discharge limit will be set to maximum power.                                                                                                                                                                                                                                                                                                                                    |
+| Discharge to Grid             | The storage will discharge to the gird using the discharge rate from 'Gird Discharge Power'. Power will be set 0 after change.                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| Block discharging             | The storage can only be charged with PV power. Charge limit will be set to maximum power.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| Block charging                | The can only be discharged and won't be charged with PV power. Discharge limit will be set to maximum power.                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 
 Note to change the mode first then set controls active in that mode.
 
 ### Controls used by Modes
 
 | Mode                          | Charge Limit   | Discharge Limit | Grid Charge Power | Grid Discharge Power | SoC Minimum |
-| ----------------------------- | -------------- | --------------- | ----------------- | -------------------- | --------------- |
-| Auto                          | Ignored (100%) | Ignored (100%)  | Ignored (0%)      | Ignored (0%)         | Used            |
-| PV Charge Limit               | Used           | Ignored (100%)  | Ignored (0%)      | Ignored (0%)         | Used            |
-| Discharge Limit               | Ignored (100%) | Used            | Ignored (0%)      | Ignored (0%)         | Used            |
-| PV Charge and Discharge Limit | Used           | Used            | Ignored (0%)      | Ignored (0%)         | Used            |
-| Charge from Grid              | Ignored        | Ignored         | Used              | Ignored (0%)         | Used            |
-| Discharge to Grid             | Ignored        | Ignored         | Ignored (0%)      | Used                 | Used            |
-| Block discharging             | Used           | Ignored (0%)    | Ignored (0%)      | Ignored (0%)         | Used            |
-| Block charging                | Ignored (0%)   | Used            | Ignored (0%)      | Ignored (0%)         | Used            |
+| ----------------------------- | -------------- | --------------- | ----------------- | -------------------- | ----------- |
+| Auto                          | Ignored (100%) | Ignored (100%)  | Ignored (0%)      | Ignored (0%)         | Used        |
+| PV Charge Limit               | Used           | Ignored (100%)  | Ignored (0%)      | Ignored (0%)         | Used        |
+| Discharge Limit               | Ignored (100%) | Used            | Ignored (0%)      | Ignored (0%)         | Used        |
+| PV Charge and Discharge Limit | Used           | Used            | Ignored (0%)      | Ignored (0%)         | Used        |
+| Charge from Grid              | Ignored        | Ignored         | Used              | Ignored (0%)         | Used        |
+| Discharge to Grid             | Ignored        | Ignored         | Ignored (0%)      | Used                 | Used        |
+| Block discharging             | Used           | Ignored (0%)    | Ignored (0%)      | Ignored (0%)         | Used        |
+| Block charging                | Ignored (0%)   | Used            | Ignored (0%)      | Ignored (0%)         | Used        |
 
 ### Fronius Web UI mapping
 
@@ -137,11 +133,11 @@ Note to change the mode first then set controls active in that mode.
 
 ### Battery Storage Sensors
 
-| Entity          | Description                                                                                          |
-| --------------- | ---------------------------------------------------------------------------------------------------- |
-| Charge Status   | Holding / Charging / Discharging                                                                     |
-| SoC Minimum    | Shared minimum SoC value. When Web API is configured and API mode is manual, this follows the Web API SoC minimum value. |
-| State of Charge | The current battery level                                                                            |
+| Entity          | Description                                                                                                              |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Charge Status   | Holding / Charging / Discharging                                                                                         |
+| SoC Minimum     | Shared minimum SoC value. When Web API is configured and API mode is manual, this follows the Web API SoC minimum value. |
+| State of Charge | The current battery level                                                                                                |
 
 ### Inverter Sensors
 
@@ -171,12 +167,12 @@ Note to change the mode first then set controls active in that mode.
 
 ### Inverter Controls
 
-| Entity          | Description                                                                                                                  |
-| --------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| AC Limit Enable | Allows limiting inverter AC output. Enable this setting first, and then set the AC limit below.                              |
-| AC Limit Rate   | Sets the AC limit in watts. Internally this is mapped to SunSpec `WMaxLimPct` (% of `WMax`) using the inverter scale factor. |
-| Power Factor Control | Enables or disables the Modbus fixed power factor control (`OutPFSet_Ena`).                                              |
-| Power Factor    | Fixed power factor (`OutPFSet`). Range is `-1.0` to `1.0`. Negative values are over-excited, positive values are under-excited. |
+| Entity               | Description                                                                                                                     |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| AC Limit Enable      | Allows limiting inverter AC output. Enable this setting first, and then set the AC limit below.                                 |
+| AC Limit Rate        | Sets the AC limit in watts. Internally this is mapped to SunSpec `WMaxLimPct` (% of `WMax`) using the inverter scale factor.    |
+| Power Factor Control | Enables or disables the Modbus fixed power factor control (`OutPFSet_Ena`).                                                     |
+| Power Factor         | Fixed power factor (`OutPFSet`). Range is `-1.0` to `1.0`. Negative values are over-excited, positive values are under-excited. |
 
 # Example Devices
 

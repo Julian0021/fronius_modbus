@@ -19,17 +19,14 @@ DISCHARGE_RATE_ADDRESS = 40355
 CHARGE_RATE_ADDRESS = 40356
 EXPORT_LIMIT_RATE_ADDRESS = 40232
 EXPORT_LIMIT_ENABLE_ADDRESS = 40236
+OUT_PF_SET_ADDRESS = 40237
+OUT_PF_SET_ENABLE_ADDRESS = 40241
 CONN_ADDRESS = 40231
-
-    # Manufacturer
-    # Type
-    # Firmware
-    # Serial
 
 STORAGE_CONTROL_MODE = {
     0: 'Auto',
-    1: 'Discharge',
-    2: 'Charge',
+    1: 'Charge',
+    2: 'Discharge',
     3: 'Charge and Discharge',
 }
 
@@ -131,5 +128,4 @@ STORAGE_EXT_CONTROL_MODE = {
     5: 'Discharge to Grid',
     6: 'Block Discharging',
     7: 'Block Charging',
-#    8: 'Calibrate',
 }

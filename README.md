@@ -1,7 +1,7 @@
 [![hacs_badge](https://img.shields.io/badge/HACS-Default-orange.svg)](https://github.com/custom-components/hacs)
 
 # fronius_modbus
-# This is a fork from redpomodoro/fronius_modbus, with some merged changes and PRs.
+This is a fork from redpomodoro/fronius_modbus, with some merged changes and PRs.
 
 Home Assistant custom component for reading data from Fronius GEN24 and Verto inverters, connected smart meters, and battery storage. This integration uses a local Modbus connection.
 

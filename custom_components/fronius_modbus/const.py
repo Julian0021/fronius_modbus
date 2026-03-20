@@ -89,7 +89,7 @@ INVERTER_SELECT_TYPES = [
 ]
 
 INVERTER_API_SWITCH_TYPES = [
-    ['JSON API', 'api_solar_api_enabled', 'mdi:api'],
+    ['JSON API', 'api_solar_api_enabled', 'mdi:api', EntityCategory.DIAGNOSTIC],
 ]
 
 INVERTER_SENSOR_TYPES = {

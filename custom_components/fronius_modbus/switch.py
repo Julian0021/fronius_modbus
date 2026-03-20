@@ -13,7 +13,9 @@ async def async_setup_entry(hass, config_entry, async_add_entities) -> None:
     entities = []
 
     if hub.storage_configured and hub.web_api_configured:
-        for name, key, icon in STORAGE_API_SWITCH_TYPES:
+        for switch_info in STORAGE_API_SWITCH_TYPES:
+            name, key, icon = switch_info[:3]
+            entity_category = switch_info[3] if len(switch_info) > 3 else None
             entities.append(
                 FroniusModbusSwitch(
                     coordinator=coordinator,
@@ -21,12 +23,15 @@ async def async_setup_entry(hass, config_entry, async_add_entities) -> None:
                     name=name,
                     key=key,
                     icon=icon,
+                    entity_category=entity_category,
                     hub=hub,
                 )
             )
 
     if hub.web_api_configured:
-        for name, key, icon in INVERTER_API_SWITCH_TYPES:
+        for switch_info in INVERTER_API_SWITCH_TYPES:
+            name, key, icon = switch_info[:3]
+            entity_category = switch_info[3] if len(switch_info) > 3 else None
             entities.append(
                 FroniusModbusSwitch(
                     coordinator=coordinator,
@@ -34,6 +39,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities) -> None:
                     name=name,
                     key=key,
                     icon=icon,
+                    entity_category=entity_category,
                     hub=hub,
                 )
             )
@@ -45,13 +51,14 @@ async def async_setup_entry(hass, config_entry, async_add_entities) -> None:
 class FroniusModbusSwitch(FroniusModbusBaseEntity, SwitchEntity):
     """Representation of a Fronius Web API switch."""
 
-    def __init__(self, coordinator, device_info, name, key, icon, hub):
+    def __init__(self, coordinator, device_info, name, key, icon, hub, entity_category=None):
         super().__init__(
             coordinator=coordinator,
             device_info=device_info,
             name=name,
             key=key,
             icon=icon,
+            entity_category=entity_category,
         )
         self._hub = hub
 

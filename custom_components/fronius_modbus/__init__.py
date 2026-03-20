@@ -84,6 +84,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: HubConfigEntry) -> bool:
 
     entry.async_on_unload(entry.add_update_listener(_async_reload_entry))
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    await migrations.async_repair_soc_minimum_entity_id(hass, entry, entry.runtime_data)
     return True
 
 

@@ -11,6 +11,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import issue_registry as ir
+from homeassistant.util import slugify
 
 from . import hub
 from .const import (
@@ -36,6 +37,10 @@ _LEGACY_POSITIONAL_METER_DEVICE_RE = re.compile(r".*_meter\d+")
 _CURRENT_STABLE_METER_RE = re.compile(
     r".*_meter_\d+_(" + "|".join(re.escape(sensor_info[1]) for sensor_info in METER_SENSOR_TYPES.values()) + r")$"
 )
+_FALLBACK_STORAGE_SOC_MINIMUM_ENTITY_ID_RE = re.compile(
+    r"^number\.battery_storage_soc_minimum(?:_\d+)?$"
+)
+_FALLBACK_STORAGE_MODEL = "Battery Storage"
 
 LEGACY_MPPT_ENTITY_KEYS = (
     "mppt1_current",
@@ -144,6 +149,10 @@ def _is_legacy_positional_meter_device(device) -> bool:
 
 def _is_current_stable_meter_unique_id(unique_id: str) -> bool:
     return bool(_CURRENT_STABLE_METER_RE.fullmatch(unique_id))
+
+
+def _is_fallback_storage_soc_minimum_entity_id(entity_id: str) -> bool:
+    return bool(_FALLBACK_STORAGE_SOC_MINIMUM_ENTITY_ID_RE.fullmatch(entity_id))
 
 
 async def _async_remove_current_meter_entities(
@@ -400,3 +409,88 @@ async def async_remove_unused_mppt_entities(
 
     if removed:
         _LOGGER.info("Removed %s unused MPPT entities", removed)
+
+
+async def async_repair_soc_minimum_entity_id(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    runtime_data: hub.Hub,
+) -> None:
+    """Repair the SoC Minimum entity id after storage metadata becomes available."""
+    if not runtime_data.storage_configured or not runtime_data.web_api_configured:
+        return
+
+    storage_model = str(runtime_data.data.get("s_model") or "").strip()
+    if not storage_model or storage_model == _FALLBACK_STORAGE_MODEL:
+        return
+
+    registry = er.async_get(hass)
+    soc_minimum_unique_id = f"{runtime_data.entity_prefix}_soc_minimum"
+    entity_entry = next(
+        (
+            candidate
+            for candidate in er.async_entries_for_config_entry(registry, entry.entry_id)
+            if candidate.domain == "number" and candidate.unique_id == soc_minimum_unique_id
+        ),
+        None,
+    )
+    if entity_entry is None:
+        return
+
+    if not _is_fallback_storage_soc_minimum_entity_id(entity_entry.entity_id):
+        return
+
+    if entity_entry.device_id is None:
+        _LOGGER.debug(
+            "Skipping SoC Minimum entity-id repair for %s because the entity has no device id",
+            entry.entry_id,
+        )
+        return
+
+    device_registry = dr.async_get(hass)
+    device_entry = device_registry.async_get(entity_entry.device_id)
+    if device_entry is None:
+        _LOGGER.debug(
+            "Skipping SoC Minimum entity-id repair for %s because the storage device is missing",
+            entry.entry_id,
+        )
+        return
+
+    device_name = str(device_entry.name_by_user or device_entry.name or "").strip()
+    if not device_name:
+        _LOGGER.debug(
+            "Skipping SoC Minimum entity-id repair for %s because the storage device has no name",
+            entry.entry_id,
+        )
+        return
+
+    name_suffix = slugify(
+        getattr(entity_entry, "object_id_base", None)
+        or getattr(entity_entry, "original_name", None)
+        or "soc_minimum"
+    )
+    preferred_entity_id = f"number.{slugify(device_name)}_{name_suffix}"
+    regenerated_entity_id = registry.async_regenerate_entity_id(entity_entry)
+
+    if regenerated_entity_id == entity_entry.entity_id:
+        return
+
+    if regenerated_entity_id != preferred_entity_id:
+        _LOGGER.debug(
+            "Skipping SoC Minimum entity-id repair for %s because %s would collide or does not match preferred target %s",
+            entry.entry_id,
+            regenerated_entity_id,
+            preferred_entity_id,
+        )
+        return
+
+    registry.async_update_entity(
+        entity_entry.entity_id,
+        new_entity_id=regenerated_entity_id,
+    )
+    _LOGGER.info(
+        "Repaired SoC Minimum entity id for %s: %s -> %s",
+        entry.entry_id,
+        entity_entry.entity_id,
+        regenerated_entity_id,
+    )

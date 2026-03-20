@@ -112,12 +112,13 @@ class FroniusDisableJsonApiRepairFlow(RepairsFlow):
         return self.async_create_entry(title="", data={})
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None):
+        del user_input
         entry = self.hass.config_entries.async_get_entry(self._entry_id)
         if entry is None:
             self._resolve_issue()
             return self.async_create_entry(title="", data={})
 
-        return await self.async_step_confirm(user_input)
+        return await self.async_step_confirm()
 
     async def async_step_confirm(self, user_input: dict[str, Any] | None = None):
         description_placeholders = self._description_placeholders()

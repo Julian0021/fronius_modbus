@@ -99,7 +99,7 @@
         "step": {
           "confirm": {
             "title": "Disable JSON API",
-            "description": "The inverter \"{entry_title}\" is running firmware {current_version}, which is below the safe minimum {minimum_version}. With JSON API enabled this can cause a memory leak and inverter outages. Press Fix to disable JSON API on the inverter.",
+            "description": "The inverter \"{entry_title}\" is running firmware {current_version}, which is below the safe minimum {minimum_version}. When JSON API stays enabled on older firmware it can cause a memory leak and inverter outages over time. Press Submit to disable JSON API on the inverter, or ignore this issue if you want to keep it enabled and accept the risk.",
             "data": {}
           }
         },

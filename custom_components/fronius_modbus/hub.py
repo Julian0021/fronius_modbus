@@ -260,6 +260,7 @@ class Hub:
             if enabled:
                 await asyncio.sleep(1.0)
         meter_phase_counts: dict[int, int] = {}
+        meter_locations: dict[int, int] = {}
         if self.web_api_configured:
             meter_info = await self._async_web_job(
                 self._webclient.get_power_meter_info,
@@ -288,11 +289,27 @@ class Hub:
                         if unit_id <= 0 or phase_count <= 0:
                             continue
                         meter_phase_counts[unit_id] = phase_count
+                locations_by_unit_id = meter_info.get("locations_by_unit_id")
+                if isinstance(locations_by_unit_id, dict):
+                    for raw_unit_id, raw_location in locations_by_unit_id.items():
+                        if (
+                            not self._client.is_numeric(raw_unit_id)
+                            or not self._client.is_numeric(raw_location)
+                        ):
+                            continue
+                        unit_id = int(raw_unit_id)
+                        location = int(raw_location)
+                        if unit_id <= 0 or location < 0:
+                            continue
+                        meter_locations[unit_id] = location
         await self._client.init_data()
         for unit_id in self._client._meter_unit_ids:
             phase_count = meter_phase_counts.get(unit_id)
             if phase_count is not None:
                 self.data[f"{self._meter_prefix(unit_id)}phase_count"] = phase_count
+            location = meter_locations.get(unit_id)
+            if location is not None:
+                self.data[f"{self._meter_prefix(unit_id)}location"] = location
         if self._client.meter_configured and self._client.primary_meter_unit_id not in self._client._meter_unit_ids:
             _LOGGER.warning(
                 "Configured meter unit ids %s do not include the primary meter unit id %s; Load and Grid status will stay unavailable",

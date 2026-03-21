@@ -348,6 +348,7 @@ class Hub:
         return await self._hass.async_add_executor_job(self._webclient.login)
 
     async def _async_refresh_optional_data(self) -> None:
+        self.data["load"] = None
         await self._async_optional_poll("inverter status", self._client.read_inverter_status_data)
         await self._async_optional_poll("inverter settings", self._client.read_inverter_model_settings_data)
         await self._async_optional_poll("inverter controls", self._client.read_inverter_controls_data)
@@ -394,6 +395,7 @@ class Hub:
     def _clear_web_api_data(self) -> None:
         for key in WEB_API_DATA_KEYS:
             self.data[key] = None
+        self.data["load"] = None
 
     def _battery_write_transition_active(self) -> bool:
         return time.monotonic() < self._battery_write_transition_until
@@ -548,9 +550,19 @@ class Hub:
         self.data['api_modbus_restriction'] = self._enabled_state(restriction.get('on'))
         self.data['api_modbus_restriction_ip'] = restriction.get('ip')
 
+    def _apply_web_load_data(self, raw_load: float | None) -> None:
+        self.data["load"] = None
+        if raw_load is None:
+            return
+        if not self._client.is_numeric(raw_load):
+            return
+        self.data["load"] = round(-float(raw_load), 2)
+
     async def refresh_web_data(self) -> None:
         if not self._webclient:
             return
+
+        self._apply_web_load_data(await self._async_web_job(self._webclient.get_load_data))
 
         modbus_config = await self._async_web_job(self._webclient.get_modbus_config)
         if isinstance(modbus_config, dict):

@@ -1024,26 +1024,6 @@ class FroniusModbusClient(ExtModbusClient):
         self.data[meter_prefix + "power"] = acpower
 
         if is_primary:
-            self.data['load'] = None
-            meter_location = self.data.get(meter_prefix + "location")
-            inverter_acpower = self.data.get('acpower')
-            if meter_location == 0:
-                if not acpower is None and not inverter_acpower is None:
-                    if self.is_numeric(acpower) and self.is_numeric(inverter_acpower):
-                        self.data['load'] = round(acpower + inverter_acpower, 2)
-                    elif not self.is_numeric(acpower):
-                        _LOGGER.error(f'meter {meter_prefix} acpower not numeric {acpower}')
-                    elif not self.is_numeric(inverter_acpower):
-                        _LOGGER.error(f'inverter acpower not numeric {inverter_acpower}')
-            elif meter_location == 1 or (
-                self.is_numeric(meter_location) and 256 <= int(meter_location) <= 511
-            ):
-                if acpower is not None:
-                    if self.is_numeric(acpower):
-                        self.data['load'] = round(-acpower, 2)
-                    else:
-                        _LOGGER.error(f'meter {meter_prefix} acpower not numeric {acpower}')
-
             status_str = None
             i_frequency = self.data["line_frequency"]
             if not i_frequency is None and self.is_numeric(i_frequency) and not m_frequency is None and self.is_numeric(m_frequency):

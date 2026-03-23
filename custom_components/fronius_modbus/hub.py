@@ -23,13 +23,13 @@ from .const import (
     DOMAIN,
     ENTITY_PREFIX,
     API_USERNAME,
-    JSON_API_LOW_FIRMWARE_ISSUE_ID_PREFIX,
+    SOLAR_API_LOW_FIRMWARE_ISSUE_ID_PREFIX,
     MIGRATION_RECONFIGURE_ISSUE_ID_PREFIX,
 )
 from .token_store import async_get_token_store
 
 _LOGGER = logging.getLogger(__name__)
-_SOLAR_API_WARNING_TRANSLATION_KEY = "json_api_low_firmware"
+_SOLAR_API_WARNING_TRANSLATION_KEY = "solar_api_low_firmware"
 _SOLAR_API_MINIMUM_VERSION = (1, 40, 7, 1)
 _SOLAR_API_MINIMUM_VERSION_TEXT = "1.40.7-1"
 _SOLAR_API_FIRMWARE_RE = re.compile(r"^(\d+)\.(\d+)\.(\d+)(?:-(\d+))?$")
@@ -186,7 +186,7 @@ class Hub:
     def _solar_api_warning_issue_id(self) -> str | None:
         if self._config_entry is None:
             return None
-        return f"{JSON_API_LOW_FIRMWARE_ISSUE_ID_PREFIX}{self._config_entry.entry_id}"
+        return f"{SOLAR_API_LOW_FIRMWARE_ISSUE_ID_PREFIX}{self._config_entry.entry_id}"
 
     def _parse_firmware_version(self, version_text: Any) -> tuple[int, int, int, int] | None:
         if not isinstance(version_text, str):

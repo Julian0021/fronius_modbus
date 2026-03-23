@@ -129,6 +129,7 @@ INVERTER_SENSOR_TYPES = {
 }
 
 INVERTER_WEB_SENSOR_TYPES = {
+    'inverter_temperature': ['Temperature', 'inverter_temperature', SensorDeviceClass.TEMPERATURE, SensorStateClass.MEASUREMENT, '°C', 'mdi:thermometer', None],
     'api_modbus_mode': ['Web API Modbus mode', 'api_modbus_mode', None, None, None, None, EntityCategory.DIAGNOSTIC],
     'api_modbus_control': ['Web API Modbus control', 'api_modbus_control', None, None, None, None, EntityCategory.DIAGNOSTIC],
     'api_modbus_sunspec_mode': ['Web API SunSpec mode', 'api_modbus_sunspec_mode', None, None, None, None, EntityCategory.DIAGNOSTIC],

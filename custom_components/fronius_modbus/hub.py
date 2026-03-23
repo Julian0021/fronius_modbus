@@ -35,6 +35,7 @@ _SOLAR_API_MINIMUM_VERSION_TEXT = "1.40.7-1"
 _SOLAR_API_FIRMWARE_RE = re.compile(r"^(\d+)\.(\d+)\.(\d+)(?:-(\d+))?$")
 
 WEB_API_DATA_KEYS = (
+    "inverter_temperature",
     "api_modbus_mode",
     "api_modbus_control",
     "api_modbus_sunspec_mode",
@@ -591,6 +592,12 @@ class Hub:
     async def refresh_web_data(self) -> None:
         if not self._webclient:
             return
+
+        inverter_info = await self._async_web_job(self._webclient.get_inverter_info)
+        if isinstance(inverter_info, dict):
+            self.data["inverter_temperature"] = inverter_info.get("temperature")
+        else:
+            self.data["inverter_temperature"] = None
 
         modbus_config = await self._async_web_job(self._webclient.get_modbus_config)
         if isinstance(modbus_config, dict):

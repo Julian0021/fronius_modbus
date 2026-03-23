@@ -41,6 +41,7 @@ WEB_API_DATA_KEYS = (
     "api_modbus_restriction",
     "api_modbus_restriction_ip",
     "api_solar_api_enabled",
+    "storage_temperature",
     "api_battery_mode_raw",
     "api_battery_mode_effective_raw",
     "api_battery_mode_consistent",
@@ -330,6 +331,7 @@ class Hub:
                         model=storage_info.get("model"),
                         serial=storage_info.get("serial"),
                     )
+                    self.data["storage_temperature"] = storage_info.get("cell_temperature")
 
         if self.web_api_configured:
             await self.refresh_web_data()
@@ -604,6 +606,12 @@ class Hub:
             self.data["api_solar_api_enabled"] = None
 
         if self.storage_configured:
+            storage_info = await self._async_web_job(self._webclient.get_storage_info)
+            if isinstance(storage_info, dict):
+                self.data["storage_temperature"] = storage_info.get("cell_temperature")
+            else:
+                self.data["storage_temperature"] = None
+
             battery_config = await self._async_web_job(self._webclient.get_battery_config)
             if isinstance(battery_config, dict):
                 self._apply_web_battery_config(battery_config)

@@ -35,7 +35,6 @@ _LEGACY_ENTITY_SUFFIXES = (
     "export_limit_enable",
     "minimum_reserve",
     "storage_power",
-    "storage_temperature",
     "tempcab",
 )
 _FALLBACK_STORAGE_SOC_MINIMUM_ENTITY_ID_RE = re.compile(

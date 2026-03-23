@@ -40,6 +40,8 @@ from .froniusmodbusclient_const import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+APPLY_TOGGLE_DELAY_SECONDS = 1.0
+APPLY_TOGGLE_MASK_SECONDS = APPLY_TOGGLE_DELAY_SECONDS + 0.5
 
 
 def _safe_read(label: str):
@@ -100,6 +102,7 @@ class FroniusModbusClient(ExtModbusClient):
         self._inverter_frequency_upper_bound = self._grid_frequency + 5
 
         self._export_limit_enable_mask_until = 0.0
+        self._power_factor_enable_mask_until = 0.0
         self._load_inverter_sample_ts: float | None = None
         self._load_meter_sample_ts: dict[int, float] = {}
         self.data = {}
@@ -275,10 +278,10 @@ class FroniusModbusClient(ExtModbusClient):
         raw_value = int(round(raw_unclamped))
         return max(0, min(raw_max, raw_value))
 
-    async def _read_export_limit_enable_raw(self) -> Optional[int]:
+    async def _read_enable_raw(self, address: int) -> Optional[int]:
         regs = await self.get_registers(
             unit_id=self._inverter_unit_id,
-            address=EXPORT_LIMIT_ENABLE_ADDRESS,
+            address=address,
             count=1,
         )
         if regs is None:
@@ -291,6 +294,49 @@ class FroniusModbusClient(ExtModbusClient):
         if not self.is_numeric(enable_raw):
             return None
         return int(enable_raw)
+
+    async def _read_export_limit_enable_raw(self) -> Optional[int]:
+        return await self._read_enable_raw(EXPORT_LIMIT_ENABLE_ADDRESS)
+
+    async def _read_power_factor_enable_raw(self) -> Optional[int]:
+        return await self._read_enable_raw(OUT_PF_SET_ENABLE_ADDRESS)
+
+    def _set_export_limit_enable_state(self, enable_raw: int) -> None:
+        self.data['ac_limit_enable'] = EXPORT_LIMIT_STATUS.get(enable_raw, 'Unknown')
+
+    def _set_export_limit_control_state(self, enable_raw: int) -> None:
+        self.data['WMaxLim_Ena'] = self._map_value(CONTROL_STATUS, enable_raw, 'throttle control')
+        self._set_export_limit_enable_state(enable_raw)
+
+    def _set_power_factor_enable_state(self, enable_raw: int) -> None:
+        status = self._map_value(CONTROL_STATUS, enable_raw, 'fixed power factor')
+        self.data['OutPFSet_Ena'] = status
+        self.data['power_factor_enable'] = status
+
+    async def _pulse_enable_for_apply(
+        self,
+        *,
+        read_enable_raw,
+        enable_address: int,
+        mask_attr: str,
+        set_enabled_state,
+    ) -> tuple[Optional[int], bool]:
+        enable_raw = await read_enable_raw()
+        was_enabled = enable_raw == 1
+
+        if not was_enabled:
+            setattr(self, mask_attr, 0.0)
+            if enable_raw is not None:
+                set_enabled_state(int(enable_raw))
+            return enable_raw, False
+
+        setattr(self, mask_attr, time.monotonic() + APPLY_TOGGLE_MASK_SECONDS)
+        await self.write_registers(
+            unit_id=self._inverter_unit_id,
+            address=enable_address,
+            payload=[0],
+        )
+        return enable_raw, True
 
     def _sanitize_mppt_u16(self, value: Optional[int]) -> Optional[int]:
         if not self.is_numeric(value):
@@ -633,9 +679,16 @@ class FroniusModbusClient(ExtModbusClient):
         OutPFSet_SF = self._client.convert_from_registers(regs[22:23], data_type = self._client.DATATYPE.INT16)
 
         self.data['Conn'] = self._map_value(CONTROL_STATUS, Conn, 'connection control')
-        self.data['WMaxLim_Ena'] = self._map_value(CONTROL_STATUS, WMaxLim_Ena, 'throttle control')
-        self.data['OutPFSet_Ena'] = self._map_value(CONTROL_STATUS, OutPFSet_Ena, 'fixed power factor')
-        self.data['power_factor_enable'] = self.data['OutPFSet_Ena']
+        if time.monotonic() < self._export_limit_enable_mask_until:
+            self._set_export_limit_control_state(1)
+        else:
+            self._set_export_limit_control_state(WMaxLim_Ena)
+        if time.monotonic() < self._power_factor_enable_mask_until:
+            self._set_power_factor_enable_state(1)
+        else:
+            self._set_power_factor_enable_state(OutPFSet_Ena)
+            if OutPFSet_Ena == 1:
+                self._power_factor_enable_mask_until = 0.0
         self.data['VArPct_Ena'] = self._map_value(CONTROL_STATUS, VArPct_Ena, 'VAr control')
         self.data['ac_limit_rate_sf'] = WMaxLimPct_SF
         self.data['power_factor_sf'] = OutPFSet_SF
@@ -1105,6 +1158,12 @@ class FroniusModbusClient(ExtModbusClient):
         raw_value = self._power_factor_value_to_raw(power_factor)
         if raw_value is None:
             raise ValueError('Power factor must be between -1 and 1')
+        power_factor_enable_raw, was_enabled = await self._pulse_enable_for_apply(
+            read_enable_raw=self._read_power_factor_enable_raw,
+            enable_address=OUT_PF_SET_ENABLE_ADDRESS,
+            mask_attr="_power_factor_enable_mask_until",
+            set_enabled_state=self._set_power_factor_enable_state,
+        )
         if raw_value < 0:
             raw_value = 65536 + raw_value
         await self.write_registers(
@@ -1112,8 +1171,22 @@ class FroniusModbusClient(ExtModbusClient):
             address=OUT_PF_SET_ADDRESS,
             payload=[raw_value],
         )
+        if was_enabled:
+            await asyncio.sleep(APPLY_TOGGLE_DELAY_SECONDS)
+            await self.write_registers(
+                unit_id=self._inverter_unit_id,
+                address=OUT_PF_SET_ENABLE_ADDRESS,
+                payload=[1],
+            )
+            self._set_power_factor_enable_state(1)
         self.data['power_factor'] = self._power_factor_raw_to_value(
             raw_value if raw_value < 32768 else raw_value - 65536
+        )
+        _LOGGER.info(
+            "Set power factor to %s (enable_before=%s, pulsed_enable=%s)",
+            self.data['power_factor'],
+            power_factor_enable_raw,
+            was_enabled,
         )
 
     async def set_power_factor_enable(self, enable: int):
@@ -1124,8 +1197,8 @@ class FroniusModbusClient(ExtModbusClient):
             address=OUT_PF_SET_ENABLE_ADDRESS,
             payload=[enable],
         )
-        self.data['OutPFSet_Ena'] = self._map_value(CONTROL_STATUS, enable, 'fixed power factor')
-        self.data['power_factor_enable'] = self.data['OutPFSet_Ena']
+        self._power_factor_enable_mask_until = 0.0
+        self._set_power_factor_enable_state(enable)
 
     async def set_minimum_reserve(self, minimum_reserve: float):
         if not float(minimum_reserve).is_integer():
@@ -1296,69 +1369,41 @@ class FroniusModbusClient(ExtModbusClient):
             _LOGGER.error("Cannot set export limit rate, missing max power or scale factor")
             return
 
-        export_limit_enable_raw = await self._read_export_limit_enable_raw()
-        was_enabled = export_limit_enable_raw == 1
-
-        if was_enabled:
-            self._export_limit_enable_mask_until = time.monotonic() + 0.6
-            await self.write_registers(
-                unit_id=self._inverter_unit_id,
-                address=EXPORT_LIMIT_ENABLE_ADDRESS,
-                payload=[0],
-            )
+        export_limit_enable_raw, was_enabled = await self._pulse_enable_for_apply(
+            read_enable_raw=self._read_export_limit_enable_raw,
+            enable_address=EXPORT_LIMIT_ENABLE_ADDRESS,
+            mask_attr="_export_limit_enable_mask_until",
+            set_enabled_state=self._set_export_limit_control_state,
+        )
 
         await self.write_registers(unit_id=self._inverter_unit_id, address=EXPORT_LIMIT_RATE_ADDRESS, payload=[int(raw_rate)])
 
         if was_enabled:
-            applied = False
-            for _ in range(6):
-                rate_regs = await self.get_registers(
-                    unit_id=self._inverter_unit_id,
-                    address=EXPORT_LIMIT_RATE_ADDRESS,
-                    count=1,
-                )
-                if rate_regs is not None:
-                    readback_raw = self._client.convert_from_registers(
-                        rate_regs[0:1],
-                        data_type=self._client.DATATYPE.UINT16,
-                    )
-                    if self.is_numeric(readback_raw) and int(readback_raw) == int(raw_rate):
-                        applied = True
-                        break
-                await asyncio.sleep(0.05)
-
+            await asyncio.sleep(APPLY_TOGGLE_DELAY_SECONDS)
             await self.write_registers(
                 unit_id=self._inverter_unit_id,
                 address=EXPORT_LIMIT_ENABLE_ADDRESS,
                 payload=[1],
             )
-            self.data['ac_limit_enable'] = EXPORT_LIMIT_STATUS.get(1, 'Enabled')
-            enable_after_raw = await self._read_export_limit_enable_raw()
-            if enable_after_raw == 1:
-                self._export_limit_enable_mask_until = 0.0
-        elif export_limit_enable_raw is not None:
-            self._export_limit_enable_mask_until = 0.0
-            self.data['ac_limit_enable'] = EXPORT_LIMIT_STATUS.get(export_limit_enable_raw, 'Unknown')
-        else:
-            self._export_limit_enable_mask_until = 0.0
+            self._set_export_limit_control_state(1)
 
         self.data['ac_limit_rate_raw'] = raw_rate
         self.data['ac_limit_rate_pct'] = self._export_limit_raw_to_percent(raw_rate)
         self.data['ac_limit_rate'] = self._export_limit_raw_to_watts(raw_rate)
         _LOGGER.info(
-            "Set export limit rate to %s W (raw=%s, enable_before=%s, pulsed_enable=%s, applied=%s)",
+            "Set export limit rate to %s W (raw=%s, enable_before=%s, pulsed_enable=%s)",
             self.data['ac_limit_rate'],
             raw_rate,
             export_limit_enable_raw,
             was_enabled,
-            applied if was_enabled else None,
         )
 
     async def set_ac_limit_enable(self, enable):
         """Enable/disable export limit (0=Disabled, 1=Enabled)"""
         enable_value = 1 if enable else 0
         await self.write_registers(unit_id=self._inverter_unit_id, address=EXPORT_LIMIT_ENABLE_ADDRESS, payload=[enable_value])
-        self.data['ac_limit_enable'] = EXPORT_LIMIT_STATUS.get(enable_value, 'Unknown')
+        self._export_limit_enable_mask_until = 0.0
+        self._set_export_limit_control_state(enable_value)
         _LOGGER.info(f"Set export limit enable to {enable_value}")
 
     async def set_conn_status(self, enable):

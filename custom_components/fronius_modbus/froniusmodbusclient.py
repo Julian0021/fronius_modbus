@@ -635,7 +635,8 @@ class FroniusModbusClient(ExtModbusClient):
                 ('PPVphBC', 6, 1, dt.UINT16), ('PPVphCA', 7, 1, dt.UINT16), ('PhVphA', 8, 1, dt.UINT16),
                 ('PhVphB', 9, 1, dt.UINT16), ('PhVphC', 10, 1, dt.UINT16), ('V_SF', 11, 1, dt.INT16),
                 ('W', 12, 1, dt.INT16), ('W_SF', 13, 1, dt.INT16), ('Hz', 14, 1, dt.INT16),
-                ('Hz_SF', 15, 1, dt.INT16), ('WH', 22, 2, dt.UINT32), ('WH_SF', 24, 1, dt.INT16),
+                ('Hz_SF', 15, 1, dt.INT16), ('VAr', 18, 1, dt.INT16), ('VAr_SF', 19, 1, dt.INT16),
+                ('WH', 22, 2, dt.UINT32), ('WH_SF', 24, 1, dt.INT16),
                 ('TmpCab', 31, 1, dt.INT16), ('Tmp_SF', 35, 1, dt.INT16), ('St', 36, 1, dt.UINT16),
                 ('StVnd', 37, 1, dt.UINT16), ('EvtVnd2', 44, 2, dt.UINT32),
             ),
@@ -647,6 +648,7 @@ class FroniusModbusClient(ExtModbusClient):
             self._set_calculated(key, raw[key], raw['V_SF'])
         self._set_calculated('tempcab', raw['TmpCab'], raw['Tmp_SF'])
         self._set_calculated("acpower", raw['W'], raw['W_SF'], 2, -50000, 50000)
+        self._set_calculated("var", raw['VAr'], raw['VAr_SF'], 2, -50000, 50000)
         self._set_calculated("line_frequency", raw['Hz'], raw['Hz_SF'], 2, 0, 100)
         self._set_calculated("acenergy", raw['WH'], raw['WH_SF'])
         self._set_mapped("status", INVERTER_STATUS, raw['St'], "inverter status")

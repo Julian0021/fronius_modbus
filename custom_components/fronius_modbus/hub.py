@@ -57,6 +57,7 @@ WEB_API_DATA_KEYS = (
 
 BATTERY_WRITE_MODBUS_RECOVERY_SECONDS = 30.0
 BATTERY_WRITE_WEB_REFRESH_DELAY_SECONDS = 10.0
+LOAD_MAX_SAMPLE_SKEW_SECONDS = 0.5
 
 
 class FroniusCoordinator(DataUpdateCoordinator):
@@ -92,6 +93,8 @@ class FroniusCoordinator(DataUpdateCoordinator):
     async def _async_update_data(self) -> dict:
         """Fetch all data from Fronius device."""
         core_err: Exception | None = None
+        self.hub.data["load"] = None
+        self.hub._client.start_load_poll_cycle()
         try:
             core_ok = await self.hub._client.read_inverter_data()
             if not core_ok:
@@ -374,6 +377,8 @@ class Hub:
         if self._client.storage_configured:
             await self._async_optional_poll("storage", self._client.read_inverter_storage_data)
 
+        self._apply_modbus_load_data()
+
         if self.web_api_configured:
             try:
                 await self.refresh_web_data()
@@ -395,7 +400,6 @@ class Hub:
     def _clear_web_api_data(self) -> None:
         for key in WEB_API_DATA_KEYS:
             self.data[key] = None
-        self.data["load"] = None
 
     def _battery_write_transition_active(self) -> bool:
         return time.monotonic() < self._battery_write_transition_until
@@ -550,19 +554,41 @@ class Hub:
         self.data['api_modbus_restriction'] = self._enabled_state(restriction.get('on'))
         self.data['api_modbus_restriction_ip'] = restriction.get('ip')
 
-    def _apply_web_load_data(self, raw_load: float | None) -> None:
+    def _apply_modbus_load_data(self) -> None:
         self.data["load"] = None
-        if raw_load is None:
+        if not self._client.meter_configured:
             return
-        if not self._client.is_numeric(raw_load):
+
+        primary_unit_id = self._client.primary_meter_unit_id
+        meter_prefix = self._meter_prefix(primary_unit_id)
+        meter_location = self._as_int(self.data.get(f"{meter_prefix}location"))
+        meter_power = self.data.get(f"{meter_prefix}power")
+        inverter_power = self.data.get("acpower")
+
+        _, meter_sample_ts = self._client.get_load_sample_timestamps(primary_unit_id)
+        if meter_sample_ts is None or meter_power is None or not self._client.is_numeric(meter_power):
             return
-        self.data["load"] = round(-float(raw_load), 2)
+
+        if meter_location == 1 or (
+            meter_location is not None and 256 <= meter_location <= 511
+        ):
+            self.data["load"] = round(-float(meter_power), 2)
+            return
+
+        if meter_location != 0:
+            return
+
+        inverter_sample_ts, _ = self._client.get_load_sample_timestamps(primary_unit_id)
+        if inverter_sample_ts is None or inverter_power is None or not self._client.is_numeric(inverter_power):
+            return
+        if abs(inverter_sample_ts - meter_sample_ts) > LOAD_MAX_SAMPLE_SKEW_SECONDS:
+            return
+
+        self.data["load"] = round(float(meter_power) + float(inverter_power), 2)
 
     async def refresh_web_data(self) -> None:
         if not self._webclient:
             return
-
-        self._apply_web_load_data(await self._async_web_job(self._webclient.get_load_data))
 
         modbus_config = await self._async_web_job(self._webclient.get_modbus_config)
         if isinstance(modbus_config, dict):

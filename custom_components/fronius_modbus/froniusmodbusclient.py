@@ -100,6 +100,8 @@ class FroniusModbusClient(ExtModbusClient):
         self._inverter_frequency_upper_bound = self._grid_frequency + 5
 
         self._export_limit_enable_mask_until = 0.0
+        self._load_inverter_sample_ts: float | None = None
+        self._load_meter_sample_ts: dict[int, float] = {}
         self.data = {}
         self.reset_storage_info()
 
@@ -124,6 +126,16 @@ class FroniusModbusClient(ExtModbusClient):
 
     def _meter_prefix(self, unit_id: int) -> str:
         return f"meter_{int(unit_id)}_"
+
+    def start_load_poll_cycle(self) -> None:
+        self._load_inverter_sample_ts = None
+        self._load_meter_sample_ts = {}
+
+    def get_load_sample_timestamps(self, unit_id: int) -> tuple[float | None, float | None]:
+        return (
+            self._load_inverter_sample_ts,
+            self._load_meter_sample_ts.get(int(unit_id)),
+        )
 
     @property
     def primary_meter_unit_id(self) -> int:
@@ -520,6 +532,7 @@ class FroniusModbusClient(ExtModbusClient):
         self.data["statusvendor"] = self._map_value(FRONIUS_INVERTER_STATUS, StVnd, "inverter status")
         self.data["statusvendor_id"] = StVnd
         self.data["events2"] = self.bitmask_to_string(EvtVnd2,INVERTER_EVENTS,default='None',bits=32)  
+        self._load_inverter_sample_ts = time.monotonic()
 
         return True
 
@@ -1022,6 +1035,7 @@ class FroniusModbusClient(ExtModbusClient):
         self.data[meter_prefix + "imported"] = self.protect_lfte(meter_prefix + 'imported', self.calculate_value(TotWhImp, TotWh_SF))
         self.data[meter_prefix + "line_frequency"] = m_frequency
         self.data[meter_prefix + "power"] = acpower
+        self._load_meter_sample_ts[int(unit_id)] = time.monotonic()
 
         if is_primary:
             status_str = None

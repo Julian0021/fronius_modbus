@@ -435,17 +435,6 @@ class FroniusWebClient:
             _LOGGER.warning("Failed reading power meter config via web API from %s: %s", self._host, err)
         return None
 
-    def get_load_data(self) -> float | None:
-        try:
-            site = self._get_json("/api/status/powerflow").get("site")
-            if not isinstance(site, dict):
-                return None
-            raw_load = site.get("P_Load")
-            return float(raw_load) if raw_load is not None else None
-        except Exception as err:
-            _LOGGER.warning("Failed reading load via internal web API from %s: %s", self._host, err)
-        return None
-
     def ensure_modbus_enabled(
         self,
         port: int,

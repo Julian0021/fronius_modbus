@@ -372,7 +372,7 @@ class Hub:
         if self._client.mppt_configured:
             await self._async_optional_poll("mppt", self._client.read_mppt_data)
 
-        await self._async_optional_poll("ac limit", self._client.read_export_limit_data)
+        await self._async_optional_poll("ac limit", self._client.read_ac_limit_data)
 
         if self._client.storage_configured:
             await self._async_optional_poll("storage", self._client.read_inverter_storage_data)

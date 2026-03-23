@@ -92,6 +92,10 @@ INVERTER_API_SWITCH_TYPES = [
     ['Solar API', 'api_solar_api_enabled', 'mdi:api', EntityCategory.DIAGNOSTIC],
 ]
 
+INVERTER_API_BUTTON_TYPES = [
+    ['Reset Modbus Control', 'reset_modbus_control', 'mdi:restart', EntityCategory.DIAGNOSTIC],
+]
+
 INVERTER_SENSOR_TYPES = {
     'A': ['AC current', 'A', SensorDeviceClass.CURRENT, SensorStateClass.MEASUREMENT, 'A', 'mdi:current-ac', None],
     'AphA': ['AC current L1', 'AphA', SensorDeviceClass.CURRENT, SensorStateClass.MEASUREMENT, 'A', 'mdi:current-ac', None],

@@ -623,6 +623,16 @@ class Hub:
         self.data["api_solar_api_enabled"] = bool(enabled)
         await self._async_sync_solar_api_warning()
 
+    @toggle_busy
+    async def reset_modbus_control(self) -> None:
+        if not self._webclient:
+            return
+
+        await self._async_web_job(
+            self._webclient.reset_modbus_control,
+            raise_on_auth_failure=True,
+        )
+
     def _get_next_soc_limits(
         self,
         *,

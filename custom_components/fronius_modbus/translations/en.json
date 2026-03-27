@@ -341,7 +341,15 @@
           "Auto": "Auto",
           "Charge": "Charge",
           "Discharge": "Discharge",
-          "Charge and Discharge": "Charge and Discharge"
+          "Charge and Discharge": "Charge and Discharge",
+          "Normal": "Normal",
+          "Power reduction": "Power reduction",
+          "Constant reactive power": "Constant reactive power",
+          "Constant power factor": "Constant power factor",
+          "Power reduction,Constant reactive power": "Power reduction,Constant reactive power",
+          "Power reduction,Constant power factor": "Power reduction,Constant power factor",
+          "Constant reactive power,Constant power factor": "Constant reactive power,Constant power factor",
+          "Power reduction,Constant reactive power,Constant power factor": "Power reduction,Constant reactive power,Constant power factor"
         }
       },
       "charge_status": {

@@ -228,6 +228,18 @@ def _state_values(*mappings) -> list[str]:
     return list(dict.fromkeys(value for mapping in mappings for value in mapping.values()))
 
 
+INVERTER_CONTROL_STATE_VALUES = [
+    "Normal",
+    "Power reduction",
+    "Constant reactive power",
+    "Constant power factor",
+    "Power reduction,Constant reactive power",
+    "Power reduction,Constant power factor",
+    "Constant reactive power,Constant power factor",
+    "Power reduction,Constant reactive power,Constant power factor",
+]
+
+
 SENSOR_STATE_OPTIONS = {
     'pv_connection': _state_values(CONNECTION_STATUS_CONDENSED),
     'storage_connection': _state_values(CONNECTION_STATUS_CONDENSED),
@@ -240,7 +252,7 @@ SENSOR_STATE_OPTIONS = {
     'OutPFSet_Ena': _state_values(CONTROL_STATUS),
     'VArPct_Ena': _state_values(CONTROL_STATUS),
     'ac_limit_enable': _state_values(AC_LIMIT_STATUS, {2: 'Unknown'}),
-    'control_mode': _state_values(STORAGE_CONTROL_MODE),
+    'control_mode': _state_values(STORAGE_CONTROL_MODE) + INVERTER_CONTROL_STATE_VALUES,
     'charge_status': _state_values(CHARGE_STATUS),
     'grid_charging': _state_values(CHARGE_GRID_STATUS),
     'api_modbus_control': _state_values(CONTROL_STATUS),

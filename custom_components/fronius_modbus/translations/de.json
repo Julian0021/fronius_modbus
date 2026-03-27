@@ -341,7 +341,15 @@
           "Auto": "Automatisch",
           "Charge": "Ladebetrieb",
           "Discharge": "Entladebetrieb",
-          "Charge and Discharge": "Lade-/Entladebetrieb"
+          "Charge and Discharge": "Lade-/Entladebetrieb",
+          "Normal": "Normal",
+          "Power reduction": "Leistungsreduzierung",
+          "Constant reactive power": "Konstante Blindleistung",
+          "Constant power factor": "Konstanter Leistungsfaktor",
+          "Power reduction,Constant reactive power": "Leistungsreduzierung,Konstante Blindleistung",
+          "Power reduction,Constant power factor": "Leistungsreduzierung,Konstanter Leistungsfaktor",
+          "Constant reactive power,Constant power factor": "Konstante Blindleistung,Konstanter Leistungsfaktor",
+          "Power reduction,Constant reactive power,Constant power factor": "Leistungsreduzierung,Konstante Blindleistung,Konstanter Leistungsfaktor"
         }
       },
       "charge_status": {

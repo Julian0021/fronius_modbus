@@ -23,6 +23,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities) -> None:
                     key=key,
                     icon=icon,
                     entity_category=entity_category,
+                    translation_key=name,
                     hub=hub,
                 )
             )
@@ -33,8 +34,9 @@ async def async_setup_entry(hass, config_entry, async_add_entities) -> None:
 
 class FroniusModbusButton(FroniusModbusBaseEntity, ButtonEntity):
     """Representation of a Fronius Web API button."""
+    _translation_platform = "button"
 
-    def __init__(self, coordinator, device_info, name, key, icon, hub, entity_category=None):
+    def __init__(self, coordinator, device_info, name, key, icon, hub, entity_category=None, translation_key=None):
         super().__init__(
             coordinator=coordinator,
             device_info=device_info,
@@ -42,6 +44,7 @@ class FroniusModbusButton(FroniusModbusBaseEntity, ButtonEntity):
             key=key,
             icon=icon,
             entity_category=entity_category,
+            translation_key=translation_key,
         )
         self._hub = hub
 

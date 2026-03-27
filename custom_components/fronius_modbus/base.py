@@ -1,17 +1,93 @@
+import json
 import logging
+from pathlib import Path
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.core import callback
 from .hub import Hub
 
 _LOGGER = logging.getLogger(__name__)
+_TRANSLATIONS_DIR = Path(__file__).resolve().parent / "translations"
+_TRANSLATION_CACHE: dict[str, dict] = {}
 
 
 class FroniusModbusBaseEntity(CoordinatorEntity):
     """Base entity for Fronius Modbus devices."""
     _key = None
     _options_dict = None
+    _translation_platform = None
 
-    def __init__(self, coordinator, device_info, name, key, device_class=None, state_class=None, unit=None, icon=None, entity_category=None, options=None, min=None, max=None, native_step=None, mode=None):
+    @classmethod
+    def _load_translation_data(cls, language: str) -> dict:
+        """Load a translation file for the requested language."""
+        if language not in _TRANSLATION_CACHE:
+            path = _TRANSLATIONS_DIR / f"{language}.json"
+            try:
+                _TRANSLATION_CACHE[language] = json.loads(path.read_text(encoding="utf-8"))
+            except (FileNotFoundError, json.JSONDecodeError):
+                _TRANSLATION_CACHE[language] = {}
+        return _TRANSLATION_CACHE[language]
+
+    def _resolve_entity_name(
+        self,
+        coordinator,
+        name,
+        translation_key,
+        translation_placeholders,
+    ):
+        """Resolve a localized fallback entity name from bundled translation files."""
+        if translation_key is None or self._translation_platform is None:
+            return name
+
+        language_candidates = []
+        language = getattr(coordinator.hass.config, "language", None)
+        if isinstance(language, str) and language:
+            language_candidates.append(language)
+            if "-" in language:
+                language_candidates.append(language.split("-", 1)[0])
+        language_candidates.append("en")
+
+        for candidate in language_candidates:
+            data = self._load_translation_data(candidate)
+            translated_name = (
+                data.get("entity", {})
+                .get(self._translation_platform, {})
+                .get(translation_key, {})
+                .get("name")
+            )
+            if not isinstance(translated_name, str):
+                continue
+            if translation_placeholders:
+                try:
+                    return translated_name.format(**translation_placeholders)
+                except KeyError:
+                    _LOGGER.warning(
+                        "Missing translation placeholders for %s.%s",
+                        self._translation_platform,
+                        translation_key,
+                    )
+                    return translated_name
+            return translated_name
+        return name
+
+    def __init__(
+        self,
+        coordinator,
+        device_info,
+        name,
+        key,
+        device_class=None,
+        state_class=None,
+        unit=None,
+        icon=None,
+        entity_category=None,
+        translation_key=None,
+        translation_placeholders=None,
+        options=None,
+        min=None,
+        max=None,
+        native_step=None,
+        mode=None,
+    ):
         """Initialize the entity."""
         super().__init__(coordinator)
         self._key = key
@@ -27,8 +103,11 @@ class FroniusModbusBaseEntity(CoordinatorEntity):
         if entity_category is not None:
             self._attr_entity_category = entity_category
         if options is not None:
-            self._options_dict = options
-            self._attr_options = list(options.values())
+            if isinstance(options, dict):
+                self._options_dict = options
+                self._attr_options = list(options.values())
+            else:
+                self._attr_options = list(options)
         if unit is not None:
             self._attr_native_unit_of_measurement = unit
         if min is not None:
@@ -41,7 +120,16 @@ class FroniusModbusBaseEntity(CoordinatorEntity):
             self._attr_mode = mode
 
         self._attr_has_entity_name = True
-        self._attr_name = name
+        if translation_key is not None:
+            self._attr_translation_key = translation_key
+            if translation_placeholders is not None:
+                self._attr_translation_placeholders = translation_placeholders
+        self._attr_name = self._resolve_entity_name(
+            coordinator=coordinator,
+            name=name,
+            translation_key=translation_key,
+            translation_placeholders=translation_placeholders,
+        )
         self._attr_unique_id = f"{coordinator.hub.entity_prefix}_{self._key}"
         self._attr_device_info = device_info
 

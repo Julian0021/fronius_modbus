@@ -1,0 +1,575 @@
+{
+  "config": {
+    "title": "Fronius Modbus",
+    "step": {
+      "user": {
+        "title": "Fronius-System einrichten",
+        "description": "Gib den Host, das Aktualisierungsintervall und die Modbus-IP-Beschränkung ein. Mindestintervall: 5 Sekunden. Wenn für diesen Host kein gespeicherter Token existiert, wird im nächsten Schritt nach dem Kundenpasswort gefragt.",
+        "data": {
+          "host": "Host",
+          "scan_interval": "Aktualisierungsintervall (Sekunden)",
+          "restrict_modbus_to_this_ip": "Modbus auf diese IP beschränken"
+        }
+      },
+      "user_password": {
+        "title": "Kundenpasswort",
+        "description": "Gib das Kundenpasswort ein, um den gespeicherten Token zu erstellen oder zu aktualisieren. Das Passwort wird nicht im Konfigurationseintrag gespeichert.",
+        "data": {
+          "api_password": "Kundenpasswort"
+        }
+      },
+      "reconfigure": {
+        "title": "Fronius-System prüfen",
+        "description": "Prüfe Host, Aktualisierungsintervall und Modbus-IP-Beschränkung. Mindestintervall: 5 Sekunden. Wenn der gespeicherte Token fehlt oder ungültig ist, wird im nächsten Schritt nach dem Kundenpasswort gefragt.",
+        "data": {
+          "host": "Host",
+          "scan_interval": "Aktualisierungsintervall (Sekunden)",
+          "restrict_modbus_to_this_ip": "Modbus auf diese IP beschränken"
+        }
+      },
+      "reconfigure_password": {
+        "title": "Kundenpasswort",
+        "description": "Gib das Kundenpasswort ein, um den gespeicherten Token zu erstellen oder zu aktualisieren.",
+        "data": {
+          "api_password": "Kundenpasswort"
+        }
+      }
+    },
+    "abort": {
+      "reconfigure_successful": "Konfiguration erfolgreich aktualisiert."
+    },
+    "error": {
+      "cannot_connect": "Verbindung fehlgeschlagen",
+      "invalid_port": "Ungültige Portnummer",
+      "invalid_host": "Ungültige Host-Adresse",
+      "unsupported_hardware": "Nicht unterstützte Hardware. Siehe Protokoll.",
+      "unknown": "Unbekannter Fehler",
+      "scan_interval_too_short": "Das Mindestintervall für die Aktualisierung beträgt 5 Sekunden.",
+      "modbus_address_conflict": "Modbus-IDs sind nicht eindeutig",
+      "missing_api_password": "Das Kundenpasswort ist erforderlich.",
+      "invalid_api_credentials": "Kundenanmeldung fehlgeschlagen.",
+      "cannot_resolve_local_ip": "Die Home-Assistant-IP konnte nicht ermittelt werden."
+    }
+  },
+  "entity": {
+    "button": {
+      "reset_modbus_control": {
+        "name": "Modbus-Steuerung zurücksetzen"
+      }
+    },
+    "number": {
+      "grid_discharge_power": {
+        "name": "Netz-Entladeleistung"
+      },
+      "grid_charge_power": {
+        "name": "Netz-Ladeleistung"
+      },
+      "discharge_limit": {
+        "name": "Entladebegrenzung"
+      },
+      "charge_limit": {
+        "name": "PV-Ladebegrenzung"
+      },
+      "soc_minimum": {
+        "name": "Minimaler SoC"
+      },
+      "api_battery_power": {
+        "name": "Ziel-Einspeisung"
+      },
+      "soc_maximum": {
+        "name": "Maximaler SoC"
+      },
+      "ac_limit_rate": {
+        "name": "AC-Leistungsbegrenzung"
+      },
+      "power_factor": {
+        "name": "Leistungsfaktor"
+      }
+    },
+    "select": {
+      "ext_control_mode": {
+        "name": "Speicher-Steuermodus",
+        "state": {
+          "Auto": "Automatisch",
+          "PV Charge Limit": "PV-Ladebegrenzung",
+          "Discharge Limit": "Entladebegrenzung",
+          "PV Charge and Discharge Limit": "PV-Lade- und Entladebegrenzung",
+          "Charge from Grid": "Aus dem Netz laden",
+          "Discharge to Grid": "Ins Netz entladen",
+          "Block Discharging": "Entladen sperren",
+          "Block Charging": "Laden sperren"
+        }
+      },
+      "api_battery_mode": {
+        "name": "Batterie-API-Modus",
+        "state": {
+          "Auto": "Automatisch",
+          "Manual": "Manuell"
+        }
+      },
+      "ac_limit_enable": {
+        "name": "AC-Begrenzung aktivieren",
+        "state": {
+          "Disabled": "Deaktiviert",
+          "Enabled": "Aktiviert"
+        }
+      },
+      "power_factor_enable": {
+        "name": "Leistungsfaktor-Steuerung",
+        "state": {
+          "Disabled": "Deaktiviert",
+          "Enabled": "Aktiviert"
+        }
+      },
+      "Conn": {
+        "name": "Wechselrichterverbindung",
+        "state": {
+          "Disabled": "Deaktiviert",
+          "Enabled": "Aktiviert"
+        }
+      }
+    },
+    "sensor": {
+      "A": {
+        "name": "AC-Strom"
+      },
+      "AphA": {
+        "name": "AC-Strom L1"
+      },
+      "AphB": {
+        "name": "AC-Strom L2"
+      },
+      "AphC": {
+        "name": "AC-Strom L3"
+      },
+      "acpower": {
+        "name": "AC-Leistung"
+      },
+      "var": {
+        "name": "Blindleistung"
+      },
+      "acenergy": {
+        "name": "AC-Energie"
+      },
+      "pv_power": {
+        "name": "PV-Leistung"
+      },
+      "load": {
+        "name": "Hauslast"
+      },
+      "power": {
+        "name": "Leistung"
+      },
+      "pv_connection": {
+        "name": "PV-Verbindung",
+        "state": {
+          "Disconnected": "Getrennt",
+          "Connected": "Verbunden",
+          "Available": "Bereit",
+          "Operating": "Aktiv"
+        }
+      },
+      "ecp_connection": {
+        "name": "Netzverbindung",
+        "state": {
+          "Disconnected": "Getrennt",
+          "Connected": "Verbunden"
+        }
+      },
+      "status": {
+        "name": "Status",
+        "state": {
+          "Off": "Aus",
+          "Sleeping": "Schlafmodus",
+          "Starting": "Startvorgang",
+          "Normal": "Normalbetrieb",
+          "Throttled": "Abgeregelt",
+          "Shutdown": "Abgeschaltet",
+          "Fault": "Fehler",
+          "Standby": "Bereit"
+        }
+      },
+      "statusvendor": {
+        "name": "Herstellerstatus",
+        "state": {
+          "Off": "Aus",
+          "Sleeping": "Schlafmodus",
+          "Starting": "Startvorgang",
+          "Normal": "Normalbetrieb",
+          "Throttled": "Abgeregelt",
+          "Shutdown": "Abgeschaltet",
+          "Fault": "Fehler",
+          "Standby": "Bereit",
+          "No solarnet": "Keine SolarNet-Verbindung",
+          "No inverter communication": "Keine Wechselrichter-Kommunikation",
+          "Overcurrent solarnet": "SolarNet-Überstrom",
+          "Firmware updating": "Firmware-Update läuft",
+          "ACFI event": "ACFI-Auslösung"
+        }
+      },
+      "line_frequency": {
+        "name": "Netzfrequenz"
+      },
+      "inverter_controls": {
+        "name": "Steuermodus"
+      },
+      "vref": {
+        "name": "Referenzspannung"
+      },
+      "vrefofs": {
+        "name": "Referenzspannungs-Offset"
+      },
+      "max_power": {
+        "name": "Maximale Leistung"
+      },
+      "events2": {
+        "name": "Ereignisse"
+      },
+      "grid_status": {
+        "name": "Netzstatus",
+        "state": {
+          "Off grid": "Vom Netz getrennt",
+          "Off grid operating": "Inselbetrieb",
+          "On grid": "Am Netz",
+          "On grid operating": "Netzbetrieb aktiv"
+        }
+      },
+      "Conn": {
+        "name": "Verbindungssteuerung",
+        "state": {
+          "Disabled": "Deaktiviert",
+          "Enabled": "Aktiviert"
+        }
+      },
+      "WMaxLim_Ena": {
+        "name": "Leistungsbegrenzung aktiv",
+        "state": {
+          "Disabled": "Deaktiviert",
+          "Enabled": "Aktiviert"
+        }
+      },
+      "OutPFSet_Ena": {
+        "name": "Fester Leistungsfaktor aktiv",
+        "state": {
+          "Disabled": "Deaktiviert",
+          "Enabled": "Aktiviert"
+        }
+      },
+      "VArPct_Ena": {
+        "name": "Blindleistungsbegrenzung aktiv",
+        "state": {
+          "Disabled": "Deaktiviert",
+          "Enabled": "Aktiviert"
+        }
+      },
+      "PhVphA": {
+        "name": "AC-Spannung L1-N"
+      },
+      "PhVphB": {
+        "name": "AC-Spannung L2-N"
+      },
+      "PhVphC": {
+        "name": "AC-Spannung L3-N"
+      },
+      "PPV": {
+        "name": "AC-Spannung Leiter-Leiter"
+      },
+      "PPVphAB": {
+        "name": "AC-Spannung L1-L2"
+      },
+      "PPVphBC": {
+        "name": "AC-Spannung L2-L3"
+      },
+      "PPVphCA": {
+        "name": "AC-Spannung L3-L1"
+      },
+      "WphA": {
+        "name": "Leistung L1"
+      },
+      "WphB": {
+        "name": "Leistung L2"
+      },
+      "WphC": {
+        "name": "Leistung L3"
+      },
+      "unit_id": {
+        "name": "Modbus-ID"
+      },
+      "ac_limit_rate": {
+        "name": "AC-Leistungsbegrenzung"
+      },
+      "ac_limit_enable": {
+        "name": "AC-Leistungsbegrenzung aktiv",
+        "state": {
+          "Disabled": "Deaktiviert",
+          "Enabled": "Aktiviert",
+          "Unknown": "Unbekannt"
+        }
+      },
+      "isolation_resistance": {
+        "name": "Isolationswiderstand"
+      },
+      "inverter_temperature": {
+        "name": "Temperatur"
+      },
+      "api_modbus_mode": {
+        "name": "Web-API-Modbus-Modus"
+      },
+      "api_modbus_control": {
+        "name": "Web-API-Modbus aktiv",
+        "state": {
+          "Disabled": "Deaktiviert",
+          "Enabled": "Aktiviert"
+        }
+      },
+      "api_modbus_sunspec_mode": {
+        "name": "Web-API-SunSpec-Modus"
+      },
+      "api_modbus_restriction": {
+        "name": "Web-API-Modbus-IP-Beschränkung",
+        "state": {
+          "Disabled": "Deaktiviert",
+          "Enabled": "Aktiviert"
+        }
+      },
+      "api_modbus_restriction_ip": {
+        "name": "Web-API-Modbus-Beschränkungs-IP"
+      },
+      "control_mode": {
+        "name": "Interner Speicher-Steuermodus",
+        "state": {
+          "Auto": "Automatisch",
+          "Charge": "Ladebetrieb",
+          "Discharge": "Entladebetrieb",
+          "Charge and Discharge": "Lade-/Entladebetrieb"
+        }
+      },
+      "charge_status": {
+        "name": "Ladestatus",
+        "state": {
+          "Off": "Aus",
+          "Empty": "Leer",
+          "Discharging": "Entladen",
+          "Charging": "Laden",
+          "Full": "Voll",
+          "Holding": "Erhaltung",
+          "Testing": "Testbetrieb"
+        }
+      },
+      "max_charge": {
+        "name": "Maximale Ladeleistung"
+      },
+      "storage_charge_current": {
+        "name": "Speicher-Ladestrom"
+      },
+      "storage_charge_voltage": {
+        "name": "Speicher-Ladespannung"
+      },
+      "storage_charge_power": {
+        "name": "Speicher-Ladeleistung"
+      },
+      "storage_charge_lfte": {
+        "name": "Speicher-Ladeenergie gesamt"
+      },
+      "storage_discharge_current": {
+        "name": "Speicher-Entladestrom"
+      },
+      "storage_discharge_voltage": {
+        "name": "Speicher-Entladespannung"
+      },
+      "storage_discharge_power": {
+        "name": "Speicher-Entladeleistung"
+      },
+      "storage_discharge_lfte": {
+        "name": "Speicher-Entladeenergie gesamt"
+      },
+      "storage_connection": {
+        "name": "Speicherverbindung",
+        "state": {
+          "Disconnected": "Getrennt",
+          "Connected": "Verbunden",
+          "Available": "Bereit",
+          "Operating": "Aktiv"
+        }
+      },
+      "storage_temperature": {
+        "name": "Zelltemperatur"
+      },
+      "exported": {
+        "name": "Exportiert"
+      },
+      "imported": {
+        "name": "Importiert"
+      },
+      "grid_charging": {
+        "name": "Netzladen",
+        "state": {
+          "Disabled": "Deaktiviert",
+          "Enabled": "Aktiviert"
+        }
+      },
+      "WHRtg": {
+        "name": "Nennkapazität"
+      },
+      "MaxChaRte": {
+        "name": "Maximale Ladeleistung"
+      },
+      "MaxDisChaRte": {
+        "name": "Maximale Entladeleistung"
+      },
+      "soc": {
+        "name": "Ladezustand"
+      },
+      "soc_minimum": {
+        "name": "Minimaler SoC"
+      },
+      "charging_power": {
+        "name": "Ladeleistung"
+      },
+      "discharging_power": {
+        "name": "Entladeleistung"
+      },
+      "mppt_module_dc_current": {
+        "name": "MPPT-Modul {module} DC-Strom"
+      },
+      "mppt_module_dc_voltage": {
+        "name": "MPPT-Modul {module} DC-Spannung"
+      },
+      "mppt_module_dc_power": {
+        "name": "MPPT-Modul {module} DC-Leistung"
+      },
+      "mppt_module_lifetime_energy": {
+        "name": "MPPT-Modul {module} Energie gesamt"
+      }
+    },
+    "switch": {
+      "charge_from_ac": {
+        "name": "Aus AC laden"
+      },
+      "charge_from_grid": {
+        "name": "Aus dem Netz laden"
+      },
+      "api_charge_from_ac": {
+        "name": "Aus AC laden"
+      },
+      "api_charge_from_grid": {
+        "name": "Aus dem Netz laden"
+      },
+      "api_solar_api_enabled": {
+        "name": "Solar-API"
+      }
+    }
+  },
+  "issues": {
+    "legacy_modbus_only_entry_reconfigure": {
+      "title": "Fronius-Web-API-Zugriff prüfen",
+      "fix_flow": {
+        "step": {
+          "init": {
+            "title": "Fronius-System prüfen",
+            "description": "Der Eintrag \"{entry_title}\" benötigt einen gültigen Kundentoken. Prüfe Host, Aktualisierungsintervall und Modbus-IP-Beschränkung. Im nächsten Schritt wird nur bei Bedarf nach dem Kundenpasswort gefragt.",
+            "data": {
+              "host": "Host",
+              "scan_interval": "Aktualisierungsintervall (Sekunden)",
+              "restrict_modbus_to_this_ip": "Modbus auf diese IP beschränken"
+            }
+          },
+          "password": {
+            "title": "Kundenpasswort",
+            "description": "Gib das Kundenpasswort ein, um den gespeicherten Token zu erstellen oder zu aktualisieren.",
+            "data": {
+              "api_password": "Kundenpasswort"
+            }
+          }
+        },
+        "error": {
+          "cannot_connect": "Verbindung fehlgeschlagen",
+          "invalid_port": "Ungültige Portnummer",
+          "invalid_host": "Ungültige Host-Adresse",
+          "unsupported_hardware": "Nicht unterstützte Hardware. Siehe Protokoll.",
+          "unknown": "Unbekannter Fehler",
+          "scan_interval_too_short": "Das Mindestintervall für die Aktualisierung beträgt 5 Sekunden.",
+          "modbus_address_conflict": "Modbus-IDs sind nicht eindeutig",
+          "missing_api_password": "Das Kundenpasswort ist erforderlich.",
+          "invalid_api_credentials": "Kundenanmeldung fehlgeschlagen.",
+          "cannot_resolve_local_ip": "Die Home-Assistant-IP konnte nicht ermittelt werden."
+        },
+        "abort": {
+          "entry_not_found": "Der Fronius-Eintrag existiert nicht mehr."
+        },
+        "create_entry": {
+          "default": "Konfiguration erfolgreich aktualisiert."
+        }
+      }
+    },
+    "solar_api_low_firmware": {
+      "title": "Fronius Solar API bei älterer Firmware deaktivieren",
+      "fix_flow": {
+        "step": {
+          "init": {
+            "title": "Solar API deaktivieren",
+            "description": "Der Wechselrichter \"{entry_title}\" verwendet die Firmware {current_version}, die unter der sicheren Mindestversion {minimum_version} liegt. Wenn die Solar API bei älterer Firmware aktiviert bleibt, kann dies mit der Zeit zu einem Speicherleck und zu Ausfällen des Wechselrichters führen. Wähle, ob die Solar API jetzt deaktiviert oder diese Warnung ignoriert werden soll.",
+            "menu_options": {
+              "fix": "Solar API deaktivieren",
+              "ignore": "Warnung ignorieren"
+            },
+            "menu_option_descriptions": {
+              "fix": "Empfohlen für Firmware unter {minimum_version}.",
+              "ignore": "Solar API aktiviert lassen und diese Warnung vorerst ausblenden."
+            }
+          },
+          "confirm": {
+            "title": "Solar API deaktivieren",
+            "description": "Klicke auf Absenden, um die Solar API am Wechselrichter \"{entry_title}\" zu deaktivieren.",
+            "submit": "Solar API deaktivieren",
+            "data": {}
+          }
+        },
+        "error": {
+          "cannot_connect": "Verbindung zum Wechselrichter fehlgeschlagen.",
+          "invalid_api_credentials": "Kundenanmeldung fehlgeschlagen.",
+          "unknown": "Unbekannter Fehler"
+        },
+        "abort": {
+          "entry_not_found": "Der Fronius-Eintrag existiert nicht mehr.",
+          "issue_ignored": "Die Warnung wurde ignoriert. Sie kann später in Reparaturen wieder aktiviert werden."
+        },
+        "create_entry": {
+          "default": "Solar API erfolgreich deaktiviert."
+        }
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Fronius-System einrichten",
+        "description": "Lege Host, Aktualisierungsintervall und Modbus-IP-Beschränkung fest. Mindestintervall: 5 Sekunden. Wenn der gespeicherte Token fehlt oder ungültig ist, wird im nächsten Schritt nach dem Kundenpasswort gefragt.",
+        "data": {
+          "host": "Host",
+          "scan_interval": "Aktualisierungsintervall (Sekunden)",
+          "restrict_modbus_to_this_ip": "Modbus auf diese IP beschränken"
+        }
+      },
+      "password": {
+        "title": "Kundenpasswort",
+        "description": "Gib das Kundenpasswort ein, um den gespeicherten Token zu erstellen oder zu aktualisieren.",
+        "data": {
+          "api_password": "Kundenpasswort"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Verbindung fehlgeschlagen",
+      "invalid_port": "Ungültige Portnummer",
+      "invalid_host": "Ungültige Host-Adresse",
+      "unsupported_hardware": "Nicht unterstützte Hardware. Siehe Protokoll.",
+      "unknown": "Unbekannter Fehler",
+      "scan_interval_too_short": "Das Mindestintervall für die Aktualisierung beträgt 5 Sekunden.",
+      "modbus_address_conflict": "Modbus-IDs sind nicht eindeutig",
+      "missing_api_password": "Das Kundenpasswort ist erforderlich.",
+      "invalid_api_credentials": "Kundenanmeldung fehlgeschlagen.",
+      "cannot_resolve_local_ip": "Die Home-Assistant-IP konnte nicht ermittelt werden."
+    }
+  }
+}

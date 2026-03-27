@@ -24,6 +24,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities) -> None:
                     key=key,
                     icon=icon,
                     entity_category=entity_category,
+                    translation_key=name,
                     hub=hub,
                 )
             )
@@ -40,6 +41,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities) -> None:
                     key=key,
                     icon=icon,
                     entity_category=entity_category,
+                    translation_key=name,
                     hub=hub,
                 )
             )
@@ -50,8 +52,9 @@ async def async_setup_entry(hass, config_entry, async_add_entities) -> None:
 
 class FroniusModbusSwitch(FroniusModbusBaseEntity, SwitchEntity):
     """Representation of a Fronius Web API switch."""
+    _translation_platform = "switch"
 
-    def __init__(self, coordinator, device_info, name, key, icon, hub, entity_category=None):
+    def __init__(self, coordinator, device_info, name, key, icon, hub, entity_category=None, translation_key=None):
         super().__init__(
             coordinator=coordinator,
             device_info=device_info,
@@ -59,6 +62,7 @@ class FroniusModbusSwitch(FroniusModbusBaseEntity, SwitchEntity):
             key=key,
             icon=icon,
             entity_category=entity_category,
+            translation_key=translation_key,
         )
         self._hub = hub
 

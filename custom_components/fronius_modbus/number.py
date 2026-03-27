@@ -35,6 +35,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities) -> None:
                 device_info=hub.device_info_storage,
                 name=number_info[0],
                 key=number_info[1],
+                translation_key=number_info[0],
                 min_val=number_info[2]['min'],
                 max_val=max_val,
                 unit=number_info[2]['unit'],
@@ -51,6 +52,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities) -> None:
                     device_info=hub.device_info_storage,
                     name=number_info[0],
                     key=number_info[1],
+                    translation_key=number_info[0],
                     min_val=number_info[2]['min'],
                     max_val=number_info[2]['max'],
                     unit=number_info[2]['unit'],
@@ -74,6 +76,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities) -> None:
             device_info=hub.device_info_inverter,
             name=number_info[0],
             key=number_info[1],
+            translation_key=number_info[0],
             min_val=number_info[2]['min'],
             max_val=max_val,
             unit=number_info[2]['unit'],
@@ -88,14 +91,29 @@ async def async_setup_entry(hass, config_entry, async_add_entities) -> None:
 
 class FroniusModbusNumber(FroniusModbusBaseEntity, NumberEntity):
     """Representation of a Battery Storage Modbus number."""
+    _translation_platform = "number"
 
-    def __init__(self, coordinator, device_info, name, key, min_val, max_val, unit, mode, native_step, hub):
+    def __init__(
+        self,
+        coordinator,
+        device_info,
+        name,
+        key,
+        min_val,
+        max_val,
+        unit,
+        mode,
+        native_step,
+        hub,
+        translation_key=None,
+    ):
         """Initialize the number entity."""
         super().__init__(
             coordinator=coordinator,
             device_info=device_info,
             name=name,
             key=key,
+            translation_key=translation_key,
             min=min_val,
             max=max_val,
             unit=unit,

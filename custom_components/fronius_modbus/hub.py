@@ -60,6 +60,9 @@ WEB_API_DATA_KEYS = (
 BATTERY_WRITE_MODBUS_RECOVERY_SECONDS = 30.0
 BATTERY_WRITE_WEB_REFRESH_DELAY_SECONDS = 10.0
 LOAD_MAX_SAMPLE_SKEW_SECONDS = 0.5
+LOAD_GLITCH_MIN_EXPORT_W = 1000.0
+LOAD_GLITCH_MAX_ABS_INVERTER_W = 50.0
+LOAD_GLITCH_MIN_PV_W = 1000.0
 
 
 class FroniusCoordinator(DataUpdateCoordinator):
@@ -164,6 +167,9 @@ class Hub:
         self._battery_write_transition_until = 0.0
         self._battery_write_transition_warned = False
         self._delayed_web_refresh_task: asyncio.Task | None = None
+        self._last_good_load_w: float | None = None
+        self._last_good_inverter_power_w: float | None = None
+        self._consecutive_bad_load_polls = 0
 
     def toggle_busy(func):
         async def wrapper(self, *args, **kwargs):
@@ -184,6 +190,48 @@ class Hub:
 
     def _meter_prefix(self, unit_id: int) -> str:
         return f"meter_{int(unit_id)}_"
+
+    def _reset_bad_load_tracking(self) -> None:
+        self._consecutive_bad_load_polls = 0
+
+    def _set_load(
+        self,
+        load_w: float,
+        *,
+        cache: bool = False,
+        inverter_power: float | None = None,
+    ) -> None:
+        load_value = round(float(load_w), 2)
+        self.data["load"] = load_value
+        if cache:
+            self._last_good_load_w = load_value
+            if inverter_power is not None:
+                self._last_good_inverter_power_w = float(inverter_power)
+        self._reset_bad_load_tracking()
+
+    def _is_inverter_power_glitch(
+        self,
+        *,
+        candidate_load: float,
+        meter_power: float,
+        inverter_power: float,
+    ) -> bool:
+        pv_power = self.data.get("pv_power")
+        pv_active = self._client.is_numeric(pv_power) and float(pv_power) >= LOAD_GLITCH_MIN_PV_W
+        previous_inverter_active = self._last_good_inverter_power_w is not None and (
+            self._last_good_inverter_power_w >= LOAD_GLITCH_MIN_PV_W
+        )
+        return (
+            candidate_load < 0
+            and meter_power <= -LOAD_GLITCH_MIN_EXPORT_W
+            and abs(inverter_power) <= LOAD_GLITCH_MAX_ABS_INVERTER_W
+            and (pv_active or previous_inverter_active)
+        )
+
+    def _apply_glitch_load_fallback(self) -> None:
+        self._consecutive_bad_load_polls += 1
+        if self._consecutive_bad_load_polls == 1 and self._last_good_load_w is not None:
+            self.data["load"] = self._last_good_load_w
 
     def _solar_api_warning_issue_id(self) -> str | None:
         if self._config_entry is None:
@@ -560,6 +608,7 @@ class Hub:
     def _apply_modbus_load_data(self) -> None:
         self.data["load"] = None
         if not self._client.meter_configured:
+            self._reset_bad_load_tracking()
             return
 
         primary_unit_id = self._client.primary_meter_unit_id
@@ -567,27 +616,42 @@ class Hub:
         meter_location = self._as_int(self.data.get(f"{meter_prefix}location"))
         meter_power = self.data.get(f"{meter_prefix}power")
         inverter_power = self.data.get("acpower")
-
-        _, meter_sample_ts = self._client.get_load_sample_timestamps(primary_unit_id)
+        inverter_sample_ts, meter_sample_ts = self._client.get_load_sample_timestamps(primary_unit_id)
         if meter_sample_ts is None or meter_power is None or not self._client.is_numeric(meter_power):
+            self._reset_bad_load_tracking()
             return
+        meter_power_f = float(meter_power)
 
         if meter_location == 1 or (
             meter_location is not None and 256 <= meter_location <= 511
         ):
-            self.data["load"] = round(-float(meter_power), 2)
+            self._set_load(-meter_power_f, cache=meter_power_f <= 0)
             return
 
         if meter_location != 0:
+            self._reset_bad_load_tracking()
             return
 
-        inverter_sample_ts, _ = self._client.get_load_sample_timestamps(primary_unit_id)
-        if inverter_sample_ts is None or inverter_power is None or not self._client.is_numeric(inverter_power):
+        if (
+            inverter_sample_ts is None
+            or inverter_power is None
+            or not self._client.is_numeric(inverter_power)
+            or abs(inverter_sample_ts - meter_sample_ts) > LOAD_MAX_SAMPLE_SKEW_SECONDS
+        ):
+            self._reset_bad_load_tracking()
             return
-        if abs(inverter_sample_ts - meter_sample_ts) > LOAD_MAX_SAMPLE_SKEW_SECONDS:
+        inverter_power_f = float(inverter_power)
+
+        candidate_load = meter_power_f + inverter_power_f
+        if self._is_inverter_power_glitch(
+            candidate_load=candidate_load,
+            meter_power=meter_power_f,
+            inverter_power=inverter_power_f,
+        ):
+            self._apply_glitch_load_fallback()
             return
 
-        self.data["load"] = round(float(meter_power) + float(inverter_power), 2)
+        self._set_load(max(candidate_load, 0.0), cache=True, inverter_power=inverter_power_f)
 
     async def refresh_web_data(self) -> None:
         if not self._webclient:

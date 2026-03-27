@@ -57,6 +57,7 @@ WEB_API_DATA_KEYS = (
 
 BATTERY_WRITE_MODBUS_RECOVERY_SECONDS = 30.0
 BATTERY_WRITE_WEB_REFRESH_DELAY_SECONDS = 10.0
+LOAD_MAX_SAMPLE_SKEW_SECONDS = 0.5
 
 
 class FroniusCoordinator(DataUpdateCoordinator):
@@ -92,6 +93,8 @@ class FroniusCoordinator(DataUpdateCoordinator):
     async def _async_update_data(self) -> dict:
         """Fetch all data from Fronius device."""
         core_err: Exception | None = None
+        self.hub.data["load"] = None
+        self.hub._client.start_load_poll_cycle()
         try:
             core_ok = await self.hub._client.read_inverter_data()
             if not core_ok:
@@ -260,6 +263,7 @@ class Hub:
             if enabled:
                 await asyncio.sleep(1.0)
         meter_phase_counts: dict[int, int] = {}
+        meter_locations: dict[int, int] = {}
         if self.web_api_configured:
             meter_info = await self._async_web_job(
                 self._webclient.get_power_meter_info,
@@ -288,11 +292,27 @@ class Hub:
                         if unit_id <= 0 or phase_count <= 0:
                             continue
                         meter_phase_counts[unit_id] = phase_count
+                locations_by_unit_id = meter_info.get("locations_by_unit_id")
+                if isinstance(locations_by_unit_id, dict):
+                    for raw_unit_id, raw_location in locations_by_unit_id.items():
+                        if (
+                            not self._client.is_numeric(raw_unit_id)
+                            or not self._client.is_numeric(raw_location)
+                        ):
+                            continue
+                        unit_id = int(raw_unit_id)
+                        location = int(raw_location)
+                        if unit_id <= 0 or location < 0:
+                            continue
+                        meter_locations[unit_id] = location
         await self._client.init_data()
         for unit_id in self._client._meter_unit_ids:
             phase_count = meter_phase_counts.get(unit_id)
             if phase_count is not None:
                 self.data[f"{self._meter_prefix(unit_id)}phase_count"] = phase_count
+            location = meter_locations.get(unit_id)
+            if location is not None:
+                self.data[f"{self._meter_prefix(unit_id)}location"] = location
         if self._client.meter_configured and self._client.primary_meter_unit_id not in self._client._meter_unit_ids:
             _LOGGER.warning(
                 "Configured meter unit ids %s do not include the primary meter unit id %s; Load and Grid status will stay unavailable",
@@ -331,6 +351,7 @@ class Hub:
         return await self._hass.async_add_executor_job(self._webclient.login)
 
     async def _async_refresh_optional_data(self) -> None:
+        self.data["load"] = None
         await self._async_optional_poll("inverter status", self._client.read_inverter_status_data)
         await self._async_optional_poll("inverter settings", self._client.read_inverter_model_settings_data)
         await self._async_optional_poll("inverter controls", self._client.read_inverter_controls_data)
@@ -355,6 +376,8 @@ class Hub:
 
         if self._client.storage_configured:
             await self._async_optional_poll("storage", self._client.read_inverter_storage_data)
+
+        self._apply_modbus_load_data()
 
         if self.web_api_configured:
             try:
@@ -530,6 +553,38 @@ class Hub:
         self.data['api_modbus_sunspec_mode'] = slave.get('sunspecMode')
         self.data['api_modbus_restriction'] = self._enabled_state(restriction.get('on'))
         self.data['api_modbus_restriction_ip'] = restriction.get('ip')
+
+    def _apply_modbus_load_data(self) -> None:
+        self.data["load"] = None
+        if not self._client.meter_configured:
+            return
+
+        primary_unit_id = self._client.primary_meter_unit_id
+        meter_prefix = self._meter_prefix(primary_unit_id)
+        meter_location = self._as_int(self.data.get(f"{meter_prefix}location"))
+        meter_power = self.data.get(f"{meter_prefix}power")
+        inverter_power = self.data.get("acpower")
+
+        _, meter_sample_ts = self._client.get_load_sample_timestamps(primary_unit_id)
+        if meter_sample_ts is None or meter_power is None or not self._client.is_numeric(meter_power):
+            return
+
+        if meter_location == 1 or (
+            meter_location is not None and 256 <= meter_location <= 511
+        ):
+            self.data["load"] = round(-float(meter_power), 2)
+            return
+
+        if meter_location != 0:
+            return
+
+        inverter_sample_ts, _ = self._client.get_load_sample_timestamps(primary_unit_id)
+        if inverter_sample_ts is None or inverter_power is None or not self._client.is_numeric(inverter_power):
+            return
+        if abs(inverter_sample_ts - meter_sample_ts) > LOAD_MAX_SAMPLE_SKEW_SECONDS:
+            return
+
+        self.data["load"] = round(float(meter_power) + float(inverter_power), 2)
 
     async def refresh_web_data(self) -> None:
         if not self._webclient:

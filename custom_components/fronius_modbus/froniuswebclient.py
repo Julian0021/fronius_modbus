@@ -110,6 +110,7 @@ def _parse_power_meter_info(
         "unit_ids": [],
         "primary_unit_id": None,
         "phase_counts_by_unit_id": {},
+        "locations_by_unit_id": {},
         "payload_shape": payload_shape,
     }
 
@@ -141,6 +142,7 @@ def _parse_power_meter_info(
                 "unit_id": int(meter_address_offset) + rtu_addr - 1,
                 "rtu_addr": rtu_addr,
                 "is_primary": label == "<primary>" or location == "0",
+                "location": _as_int(location, -1),
                 "phase_count": phase_count if phase_count > 0 else None,
             }
         )
@@ -159,6 +161,8 @@ def _parse_power_meter_info(
         unit_ids.append(unit_id)
         if meter["phase_count"] is not None:
             result["phase_counts_by_unit_id"][unit_id] = meter["phase_count"]
+        if meter["location"] >= 0:
+            result["locations_by_unit_id"][unit_id] = meter["location"]
         if result["primary_unit_id"] is None and meter["is_primary"]:
             result["primary_unit_id"] = unit_id
 

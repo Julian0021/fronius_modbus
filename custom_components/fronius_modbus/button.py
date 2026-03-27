@@ -1,12 +1,12 @@
 from homeassistant.components.button import ButtonEntity
 
-from .base import FroniusModbusBaseEntity
+from .base import FroniusModbusBaseEntity, async_ensure_translation_cache
 from .const import INVERTER_API_BUTTON_TYPES
 from .hub import Hub
 
 
 async def async_setup_entry(hass, config_entry, async_add_entities) -> None:
-    del hass
+    await async_ensure_translation_cache(hass)
     hub: Hub = config_entry.runtime_data
     coordinator = hub.coordinator
 

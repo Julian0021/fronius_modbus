@@ -11,11 +11,12 @@ from homeassistant.components.number import (
 )
 
 from .hub import Hub
-from .base import FroniusModbusBaseEntity
+from .base import FroniusModbusBaseEntity, async_ensure_translation_cache
 
 _LOGGER = logging.getLogger(__name__)
 
 async def async_setup_entry(hass, config_entry, async_add_entities) -> None:
+    await async_ensure_translation_cache(hass)
     hub: Hub = config_entry.runtime_data
     coordinator = hub.coordinator
 

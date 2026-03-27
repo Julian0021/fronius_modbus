@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 
 from homeassistant.components.sensor import (
+    SensorDeviceClass,
     SensorEntity,
 )
 from homeassistant.core import HomeAssistant
@@ -22,7 +23,7 @@ from .const import (
     STORAGE_SENSOR_TYPES,
 )
 from .hub import Hub
-from .base import FroniusModbusBaseEntity
+from .base import FroniusModbusBaseEntity, async_ensure_translation_cache
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -36,6 +37,7 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Add sensors for passed config_entry in HA."""
+    await async_ensure_translation_cache(hass)
     hub:Hub = config_entry.runtime_data
 
     entities = []

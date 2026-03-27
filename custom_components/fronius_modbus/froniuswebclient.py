@@ -402,6 +402,14 @@ class FroniusWebClient:
     def _get_json(self, path: str) -> dict[str, Any]:
         return self._request("get", path).json()
 
+    def _get_public_json(self, path: str) -> dict[str, Any]:
+        response = requests.get(
+            f"http://{self._host}{path}",
+            timeout=self._timeout,
+        )
+        response.raise_for_status()
+        return response.json()
+
     def _post_ok(self, path: str, payload: dict[str, Any] | None = None) -> bool:
         return self._request("post", path, payload=payload).ok
 
@@ -459,7 +467,7 @@ class FroniusWebClient:
 
     def get_power_meter_info(self, meter_address_offset: int = 200) -> dict[str, Any] | None:
         try:
-            data = self._get_json("/api/components/PowerMeter/readable")
+            data = self._get_public_json("/api/components/PowerMeter/readable")
             meter_info = _parse_power_meter_info(data, meter_address_offset)
             if meter_info is None:
                 top_level_keys = list(data.keys()) if isinstance(data, dict) else []
@@ -478,8 +486,6 @@ class FroniusWebClient:
                 meter_info.get("primary_unit_id"),
             )
             return meter_info
-        except FroniusWebAuthError:
-            raise
         except Exception as err:
             _LOGGER.warning("Failed reading power meter config via web API from %s: %s", self._host, err)
         return None

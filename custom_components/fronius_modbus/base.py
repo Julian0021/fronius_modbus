@@ -3,11 +3,42 @@ import logging
 from pathlib import Path
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.core import callback
+from homeassistant.core import HomeAssistant
 from .hub import Hub
 
 _LOGGER = logging.getLogger(__name__)
 _TRANSLATIONS_DIR = Path(__file__).resolve().parent / "translations"
 _TRANSLATION_CACHE: dict[str, dict] = {}
+
+
+def _translation_language_candidates(hass: HomeAssistant) -> list[str]:
+    language_candidates: list[str] = []
+    language = getattr(hass.config, "language", None)
+    if isinstance(language, str) and language:
+        language_candidates.append(language)
+        if "-" in language:
+            language_candidates.append(language.split("-", 1)[0])
+    language_candidates.append("en")
+    return language_candidates
+
+
+def _read_translation_data(path: Path) -> dict:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
+async def async_ensure_translation_cache(hass: HomeAssistant) -> None:
+    """Preload translation files used for entity-name fallback."""
+    for language in _translation_language_candidates(hass):
+        if language in _TRANSLATION_CACHE:
+            continue
+        path = _TRANSLATIONS_DIR / f"{language}.json"
+        _TRANSLATION_CACHE[language] = await hass.async_add_executor_job(
+            _read_translation_data,
+            path,
+        )
 
 
 class FroniusModbusBaseEntity(CoordinatorEntity):
@@ -19,13 +50,7 @@ class FroniusModbusBaseEntity(CoordinatorEntity):
     @classmethod
     def _load_translation_data(cls, language: str) -> dict:
         """Load a translation file for the requested language."""
-        if language not in _TRANSLATION_CACHE:
-            path = _TRANSLATIONS_DIR / f"{language}.json"
-            try:
-                _TRANSLATION_CACHE[language] = json.loads(path.read_text(encoding="utf-8"))
-            except (FileNotFoundError, json.JSONDecodeError):
-                _TRANSLATION_CACHE[language] = {}
-        return _TRANSLATION_CACHE[language]
+        return _TRANSLATION_CACHE.get(language, {})
 
     def _resolve_entity_name(
         self,
@@ -38,15 +63,7 @@ class FroniusModbusBaseEntity(CoordinatorEntity):
         if translation_key is None or self._translation_platform is None:
             return name
 
-        language_candidates = []
-        language = getattr(coordinator.hass.config, "language", None)
-        if isinstance(language, str) and language:
-            language_candidates.append(language)
-            if "-" in language:
-                language_candidates.append(language.split("-", 1)[0])
-        language_candidates.append("en")
-
-        for candidate in language_candidates:
+        for candidate in _translation_language_candidates(coordinator.hass):
             data = self._load_translation_data(candidate)
             translated_name = (
                 data.get("entity", {})

@@ -216,7 +216,7 @@ class FroniusModbusClient(ExtModbusClient):
         value = self.data.get("ac_limit_rate_sf")
         if not self.is_numeric(value):
             return None
-        rate_sf = int(value)
+        rate_sf = round(value)
         if rate_sf < -6 or rate_sf > 6:
             _LOGGER.error("Invalid AC limit scale factor: %s", rate_sf)
             return None
@@ -305,7 +305,7 @@ class FroniusModbusClient(ExtModbusClient):
         percent = (clamped_watts / max_power_w) * 100.0
         raw_unclamped = percent / (10 ** rate_sf)
         raw_max = int(round(100.0 / (10 ** rate_sf)))
-        raw_value = int(round(raw_unclamped))
+        raw_value = int(round(raw_unclamped, abs(rate_sf)))
         return max(0, min(raw_max, raw_value))
 
     async def _read_enable_raw(self, address: int) -> Optional[int]:
@@ -1416,7 +1416,7 @@ class FroniusModbusClient(ExtModbusClient):
         await self.write_registers(
             unit_id=self._inverter_unit_id,
             address=AC_LIMIT_RATE_ADDRESS,
-            payload=[int(raw_rate)],
+            payload=[round(raw_rate)],
         )
 
         if was_enabled:

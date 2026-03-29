@@ -45,6 +45,23 @@ def test_sanitize_config_payload_keeps_password_and_removes_legacy_meter_keys() 
     assert payload["scan_interval"] == DEFAULT_SCAN_INTERVAL
 
 
+def test_sanitize_config_payload_drops_unknown_keys_and_preserves_supported_ones() -> None:
+    payload = sanitize_config_payload(
+        {
+            CONF_HOST: "inverter.local",
+            CONF_API_PASSWORD: "secret",
+            "scan_intervall": 42,
+            "typoed_flag": True,
+        }
+    )
+
+    assert payload[CONF_HOST] == "inverter.local"
+    assert payload[CONF_API_PASSWORD] == "secret"
+    assert payload["scan_interval"] == DEFAULT_SCAN_INTERVAL
+    assert "scan_intervall" not in payload
+    assert "typoed_flag" not in payload
+
+
 def test_entry_value_prefers_options_and_form_defaults_only_exposes_user_owned_fields() -> None:
     entry = ConfigEntry(
         data={

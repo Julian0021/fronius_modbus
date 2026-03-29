@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 
 from homeassistant.core import HomeAssistant
 
+_LOGGER = logging.getLogger(__name__)
 _TRANSLATIONS_DIR = Path(__file__).resolve().parent / "translations"
 _TRANSLATION_CACHE: dict[str, dict] = {}
 
@@ -22,9 +24,25 @@ def translation_language_candidates(hass: HomeAssistant) -> list[str]:
 
 def _read_translation_data(path: Path) -> dict:
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (FileNotFoundError, json.JSONDecodeError):
+        raw_data = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        _LOGGER.warning("Translation file is missing: %s", path.name)
         return {}
+
+    try:
+        translation_data = json.loads(raw_data)
+    except json.JSONDecodeError as err:
+        _LOGGER.warning("Translation file contains invalid JSON: %s (%s)", path.name, err)
+        return {}
+
+    if not isinstance(translation_data, dict):
+        _LOGGER.warning(
+            "Translation file must decode to a JSON object: %s",
+            path.name,
+        )
+        return {}
+
+    return translation_data
 
 
 async def async_get_translation_data(hass: HomeAssistant, language: str) -> dict:

@@ -7,6 +7,7 @@ from homeassistant.const import CONF_HOST, CONF_NAME, CONF_PORT, CONF_SCAN_INTER
 
 from .const import (
     API_USERNAME,
+    CONF_API_PASSWORD,
     CONF_API_USERNAME,
     CONF_AUTO_ENABLE_MODBUS,
     CONF_INVERTER_UNIT_ID,
@@ -45,6 +46,8 @@ _DEFAULT_CONFIG_PAYLOAD = {
     CONF_RECONFIGURE_REQUIRED: False,
 }
 
+SUPPORTED_CONFIG_KEYS = frozenset((*_DEFAULT_CONFIG_PAYLOAD, CONF_API_PASSWORD))
+
 
 def default_config_payload() -> dict[str, Any]:
     """Return the canonical config shape used by flows and migrations."""
@@ -60,7 +63,7 @@ def sanitize_config_payload(
     sanitized = default_config_payload()
     if payload:
         for key, value in payload.items():
-            if key in LEGACY_CONFIG_KEYS:
+            if key in LEGACY_CONFIG_KEYS or key not in SUPPORTED_CONFIG_KEYS:
                 continue
             sanitized[key] = value
 

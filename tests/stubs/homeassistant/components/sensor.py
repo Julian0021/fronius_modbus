@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from homeassistant.helpers.entity import Entity
+
 
 class SensorDeviceClass:
     CURRENT = "current"
@@ -17,5 +19,5 @@ class SensorStateClass:
     TOTAL_INCREASING = "total_increasing"
 
 
-class SensorEntity:
-    """Minimal sensor entity stub."""
+class SensorEntity(Entity):
+    """Sensor entity stub with lightweight state validation."""

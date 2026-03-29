@@ -291,15 +291,34 @@ class XHeaderDigestAuth(AuthBase):
             self._digest_uri(prepared.url),
             challenge,
         )
-        retried = response.connection.send(prepared, **kwargs)
+        retried = self._retry_request(prepared, **kwargs)
         retried.history.append(response)
-        retried.request = prepared
         if retried.status_code != 401 and self.password:
             self.saved_token = {
                 "realm": challenge["realm"],
                 "token": self._secret(challenge["realm"]),
             }
         return retried
+
+    def _retry_request(self, prepared, **kwargs: object) -> requests.Response:
+        """Resend a prepared request via the stable top-level requests API."""
+        request_kwargs = {
+            key: value
+            for key, value in kwargs.items()
+            if key in {"allow_redirects", "cert", "proxies", "stream", "timeout", "verify"}
+        }
+        headers = {
+            key: value
+            for key, value in prepared.headers.items()
+            if key.lower() != "content-length"
+        }
+        return requests.request(
+            prepared.method,
+            prepared.url,
+            headers=headers,
+            data=prepared.body,
+            **request_kwargs,
+        )
 
     def _digest_uri(self, url: str) -> str:
         parsed = urlparse(url)

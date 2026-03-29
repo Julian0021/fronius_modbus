@@ -4,7 +4,7 @@ import logging
 
 from homeassistant.helpers.update_coordinator import UpdateFailed
 
-from .integration_errors import FroniusError, FroniusOperationError
+from .integration_errors import FroniusError
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -26,9 +26,6 @@ class HubRuntimeService:
             await self._hub._client.read_service.read_inverter_data()
         except FroniusError as err:
             core_err: FroniusError = err
-        except Exception as err:
-            core_err = FroniusOperationError("Unexpected core inverter refresh failure")
-            core_err.__cause__ = err
 
         else:
             self._handle_core_modbus_success()

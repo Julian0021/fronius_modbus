@@ -187,15 +187,11 @@ class FroniusModbusWriteService:
         discharge_limit: float,
         extended_mode: int,
         log_message: str,
-        grid_charge_power: float = 0,
-        grid_discharge_power: float = 0,
     ) -> None:
         await self.change_settings(
             mode=mode,
             charge_limit=charge_limit,
             discharge_limit=discharge_limit,
-            grid_charge_power=grid_charge_power,
-            grid_discharge_power=grid_discharge_power,
             extended_mode=extended_mode,
         )
         _LOGGER.info(log_message)
@@ -424,8 +420,6 @@ class FroniusModbusWriteService:
         mode,
         charge_limit,
         discharge_limit,
-        grid_charge_power=0,
-        grid_discharge_power=0,
         minimum_reserve=None,
         extended_mode: int | None = None,
     ):

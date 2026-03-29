@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 from types import SimpleNamespace
 
 from custom_components.fronius_modbus.froniusmodbus_writes import (
@@ -78,6 +79,19 @@ async def test_storage_writes_use_named_protocol_offsets() -> None:
         (1, 40300 + CHARGE_RATE_OFFSET, 2000),
     ]
     assert facade.storage_refreshes == 4
+
+
+def test_change_settings_signature_does_not_advertise_unused_grid_power_arguments() -> None:
+    parameter_names = tuple(inspect.signature(FroniusModbusWriteService.change_settings).parameters)
+
+    assert parameter_names == (
+        "self",
+        "mode",
+        "charge_limit",
+        "discharge_limit",
+        "minimum_reserve",
+        "extended_mode",
+    )
 
 
 async def test_set_power_factor_enable_uses_named_control_state() -> None:

@@ -193,6 +193,10 @@ class Hub:
             return None
         return f"{SOLAR_API_LOW_FIRMWARE_ISSUE_ID_PREFIX}{self._config_entry.entry_id}"
 
+    @property
+    def solar_api_warning_issue_id(self) -> str | None:
+        return self._solar_api_warning_issue_id()
+
     def _parse_firmware_version(
         self,
         version_text: Any,
@@ -206,6 +210,28 @@ class Hub:
 
         major, minor, patch, build = match.groups(default="0")
         return (int(major), int(minor), int(patch), int(build))
+
+    def parse_firmware_version(
+        self,
+        version_text: Any,
+    ) -> tuple[int, int, int, int] | None:
+        return self._parse_firmware_version(version_text)
+
+    @property
+    def hass(self) -> HomeAssistant:
+        return self._hass
+
+    @property
+    def warning_entry_id(self) -> str | None:
+        if self._config_entry is None:
+            return None
+        return self._config_entry.entry_id
+
+    @property
+    def warning_entry_title(self) -> str:
+        if self._config_entry is not None:
+            return self._config_entry.title
+        return self._name
 
     def _battery_write_transition_active(self) -> bool:
         return time.monotonic() < self._battery_write_transition_until

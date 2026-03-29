@@ -23,11 +23,19 @@ def _clear_translation_cache() -> None:
         cache.clear()
 
 
+def _clear_storage_stub() -> None:
+    from homeassistant.helpers.storage import Store
+
+    Store.reset_storage()
+
+
 @pytest.fixture(autouse=True)
 def reset_runtime_caches() -> None:
     _clear_translation_cache()
+    _clear_storage_stub()
     yield
     _clear_translation_cache()
+    _clear_storage_stub()
 
 
 @pytest.fixture(scope="session")

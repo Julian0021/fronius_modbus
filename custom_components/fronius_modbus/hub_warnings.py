@@ -20,7 +20,7 @@ class HubWarningService:
         if not self._hub.web_api_configured:
             return False
 
-        firmware_version = self._hub._parse_firmware_version(
+        firmware_version = self._hub.parse_firmware_version(
             self._hub.inverter_state.get("i_sw_version")
         )
         if firmware_version is None:
@@ -33,17 +33,21 @@ class HubWarningService:
         return firmware_version < _SOLAR_API_MINIMUM_VERSION
 
     async def async_sync_solar_api_warning(self) -> None:
-        issue_id = self._hub._solar_api_warning_issue_id()
+        issue_id = self._hub.solar_api_warning_issue_id
         if issue_id is None:
             return
 
+        entry_id = self._hub.warning_entry_id
+        if entry_id is None:
+            return
+
         if not self.solar_api_warning_needed():
-            ir.async_delete_issue(self._hub._hass, DOMAIN, issue_id)
+            ir.async_delete_issue(self._hub.hass, DOMAIN, issue_id)
             return
 
         current_version = self._hub.inverter_state.get("i_sw_version")
         ir.async_create_issue(
-            self._hub._hass,
+            self._hub.hass,
             DOMAIN,
             issue_id,
             is_fixable=True,
@@ -51,16 +55,12 @@ class HubWarningService:
             severity=ir.IssueSeverity.WARNING,
             translation_key=_SOLAR_API_WARNING_TRANSLATION_KEY,
             translation_placeholders={
-                "entry_title": (
-                    self._hub._config_entry.title
-                    if self._hub._config_entry is not None
-                    else self._hub._name
-                ),
+                "entry_title": self._hub.warning_entry_title,
                 "current_version": str(current_version),
                 "minimum_version": _SOLAR_API_MINIMUM_VERSION_TEXT,
             },
             data={
-                "entry_id": self._hub._config_entry.entry_id,
+                "entry_id": entry_id,
                 "current_version": str(current_version),
                 "minimum_version": _SOLAR_API_MINIMUM_VERSION_TEXT,
             },

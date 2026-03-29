@@ -9,6 +9,10 @@ class Store:
     def __init__(self, hass, version: int, key: str) -> None:
         self._storage_key = (id(hass), version, key)
 
+    @classmethod
+    def reset_storage(cls) -> None:
+        cls._storage.clear()
+
     def __class_getitem__(cls, _item):
         return cls
 

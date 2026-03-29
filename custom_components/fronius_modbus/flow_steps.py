@@ -125,6 +125,23 @@ def _set_form_error(errors: dict[str, str], err: Exception) -> None:
         errors["base"] = "unknown"
 
 
+def _prepare_settings_step_state(
+    user_input: dict[str, Any],
+    *,
+    base_settings: dict[str, Any],
+    previous_settings: dict[str, Any] | None,
+    force_apply_modbus_config: bool,
+) -> tuple[dict[str, Any], bool]:
+    """Normalize settings input before any token-backed validation runs."""
+    settings = expand_settings_input(user_input, base_settings)
+    apply_modbus_config = force_apply_modbus_config or should_apply_modbus_config(
+        settings,
+        previous_settings,
+    )
+    validate_static_input(settings)
+    return settings, apply_modbus_config
+
+
 class TokenFlowMixin:
     """Shared token-backed settings/password steps for config, options, and repairs."""
 
@@ -160,38 +177,49 @@ class TokenFlowMixin:
 
         if user_input is not None:
             try:
-                settings = expand_settings_input(user_input, base_settings)
-                validate_static_input(settings)
-                apply_modbus_config = force_apply_modbus_config or should_apply_modbus_config(
-                    settings,
-                    previous_settings,
+                settings, apply_modbus_config = _prepare_settings_step_state(
+                    user_input,
+                    base_settings=base_settings,
+                    previous_settings=previous_settings,
+                    force_apply_modbus_config=force_apply_modbus_config,
                 )
-                token = await async_load_token(self.hass, settings[CONF_HOST])
-                if token is None:
+            except HomeAssistantError as err:
+                _set_form_error(errors, err)
+            else:
+                try:
+                    token = await async_load_token(self.hass, settings[CONF_HOST])
+                    if token is None:
+                        self._pending_flow_state = _PendingFlowState(
+                            settings,
+                            previous_host,
+                            apply_modbus_config,
+                        )
+                        return await self._async_show_password_step(
+                            step_id=password_step_id
+                        )
+
+                    info = await validate_input(
+                        self.hass,
+                        settings,
+                        api_token=token,
+                        allow_unconfigured_modbus=apply_modbus_config,
+                    )
+                    self._pending_flow_state = None
+                    return await on_success(
+                        settings,
+                        info,
+                        previous_host,
+                        apply_modbus_config,
+                    )
+                except InvalidApiCredentials:
                     self._pending_flow_state = _PendingFlowState(
                         settings,
                         previous_host,
                         apply_modbus_config,
                     )
                     return await self._async_show_password_step(step_id=password_step_id)
-
-                info = await validate_input(
-                    self.hass,
-                    settings,
-                    api_token=token,
-                    allow_unconfigured_modbus=apply_modbus_config,
-                )
-                self._pending_flow_state = None
-                return await on_success(settings, info, previous_host, apply_modbus_config)
-            except InvalidApiCredentials:
-                self._pending_flow_state = _PendingFlowState(
-                    settings,
-                    previous_host,
-                    apply_modbus_config,
-                )
-                return await self._async_show_password_step(step_id=password_step_id)
-            except HomeAssistantError as err:
-                _set_form_error(errors, err)
+                except HomeAssistantError as err:
+                    _set_form_error(errors, err)
 
         return self.async_show_form(
             step_id=step_id,

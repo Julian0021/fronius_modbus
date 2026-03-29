@@ -60,28 +60,6 @@ class FroniusModbusSelect(FroniusModbusBaseEntity, SelectEntity):
 
     _translation_platform = "select"
 
-    def __init__(
-        self,
-        coordinator,
-        device_info,
-        name,
-        key,
-        options,
-        hub,
-        description=None,
-        translation_key=None,
-    ):
-        super().__init__(
-            coordinator=coordinator,
-            device_info=device_info,
-            name=name,
-            key=key,
-            description=description,
-            translation_key=translation_key,
-            options=options,
-        )
-        self._hub = hub
-
     @property
     def current_option(self) -> str | None:
         if isinstance(self.coordinator.data, dict):

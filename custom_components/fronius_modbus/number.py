@@ -96,37 +96,6 @@ class FroniusModbusNumber(FroniusModbusBaseEntity, NumberEntity):
 
     _translation_platform = "number"
 
-    def __init__(
-        self,
-        coordinator,
-        device_info,
-        name,
-        key,
-        minimum,
-        maximum,
-        unit,
-        mode,
-        native_step,
-        hub,
-        description=None,
-        translation_key=None,
-    ):
-        """Initialize the number entity."""
-        super().__init__(
-            coordinator=coordinator,
-            device_info=device_info,
-            name=name,
-            key=key,
-            description=description,
-            translation_key=translation_key,
-            minimum=minimum,
-            maximum=maximum,
-            unit=unit,
-            mode=mode,
-            native_step=native_step,
-        )
-        self._hub = hub
-
     @property
     def native_value(self):
         """Return the native number value."""

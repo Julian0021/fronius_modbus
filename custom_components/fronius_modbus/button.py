@@ -46,30 +46,6 @@ class FroniusModbusButton(FroniusModbusBaseEntity, ButtonEntity):
 
     _translation_platform = "button"
 
-    def __init__(
-        self,
-        coordinator,
-        device_info,
-        name,
-        key,
-        icon,
-        hub,
-        description=None,
-        entity_category=None,
-        translation_key=None,
-    ):
-        super().__init__(
-            coordinator=coordinator,
-            device_info=device_info,
-            name=name,
-            key=key,
-            description=description,
-            icon=icon,
-            entity_category=entity_category,
-            translation_key=translation_key,
-        )
-        self._hub = hub
-
     async def async_press(self) -> None:
         await dispatch_service_action(
             self._hub,

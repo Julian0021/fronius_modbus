@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
+from typing import Any
 
 from homeassistant.core import callback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -13,9 +15,9 @@ _LOGGER = logging.getLogger(__name__)
 class FroniusModbusBaseEntity(CoordinatorEntity):
     """Base entity for Fronius Modbus devices."""
 
-    _key = None
-    _options_dict = None
-    _translation_platform = None
+    _key: str | None = None
+    _options_dict: dict[Any, str] | None = None
+    _translation_platform: str | None = None
 
     def _resolve_entity_name(
         self,
@@ -36,26 +38,29 @@ class FroniusModbusBaseEntity(CoordinatorEntity):
 
     def __init__(
         self,
+        *,
         coordinator,
         device_info,
-        name,
-        key,
-        description=None,
-        device_class=None,
-        state_class=None,
-        unit=None,
-        icon=None,
-        entity_category=None,
-        translation_key=None,
-        translation_placeholders=None,
-        options=None,
-        minimum=None,
-        maximum=None,
-        native_step=None,
-        mode=None,
-    ):
+        name: str | None,
+        key: str,
+        hub=None,
+        description: Any = None,
+        device_class: Any = None,
+        state_class: Any = None,
+        unit: str | None = None,
+        icon: str | None = None,
+        entity_category: Any = None,
+        translation_key: str | None = None,
+        translation_placeholders: Mapping[str, str] | None = None,
+        options: Mapping[Any, str] | list[str] | tuple[str, ...] | None = None,
+        minimum: float | int | None = None,
+        maximum: float | int | None = None,
+        native_step: float | int | None = None,
+        mode: Any = None,
+    ) -> None:
         """Initialize the entity."""
         super().__init__(coordinator)
+        self._hub = hub
         self._key = key
         self._description = description
         self._unit_of_measurement = unit
@@ -68,8 +73,8 @@ class FroniusModbusBaseEntity(CoordinatorEntity):
         if entity_category is not None:
             self._attr_entity_category = entity_category
         if options is not None:
-            if isinstance(options, dict):
-                self._options_dict = options
+            if isinstance(options, Mapping):
+                self._options_dict = dict(options)
                 self._attr_options = list(options.values())
             else:
                 self._attr_options = list(options)

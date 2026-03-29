@@ -1,0 +1,132 @@
+from __future__ import annotations
+
+import pytest
+
+from custom_components.fronius_modbus.froniuswebclient import (
+    FroniusWebAuthError,
+    FroniusWebClient,
+)
+
+POWER_METER_READABLE_PAYLOAD = {
+    "Body": {
+        "Data": {
+            "meter_node": {
+                "attributes": {
+                    "addr": "1",
+                    "label": "<primary>",
+                    "manufacturer": "Fronius",
+                    "meter-location": "0",
+                    "model": "Smart Meter TS 65A-3",
+                    "phaseCnt": "3",
+                }
+            }
+        }
+    }
+}
+
+INVERTER_READABLE_PAYLOAD = {
+    "Body": {
+        "Data": {
+            "inverter_node": {
+                "channels": {
+                    "DEVICE_TEMPERATURE_AMBIENTMEAN_01_F32": 34.798126220703125,
+                }
+            }
+        }
+    }
+}
+
+STORAGE_READABLE_PAYLOAD = {
+    "Body": {
+        "Data": {
+            "storage_node": {
+                "attributes": {
+                    "DisplayName": "BYD3",
+                    "manufacturer": "BYD",
+                    "model": "HVB",
+                    "nameplate": (
+                        "{\"manufacturer\":\"BYD\",\"model\":\"HVB\","
+                        "\"serial\":\"BATTERY-SERIAL-01\"}"
+                    ),
+                    "serial": "BATTERY-SERIAL-01",
+                },
+                "channels": {
+                    "BAT_TEMPERATURE_CELL_F64": 14.450000000000001,
+                },
+            }
+        }
+    }
+}
+
+
+def test_get_power_meter_info_parses_live_payload(monkeypatch) -> None:
+    client = FroniusWebClient("fixture-host")
+    monkeypatch.setattr(client, "_get_public_json", lambda path: POWER_METER_READABLE_PAYLOAD)
+
+    meter_info = client.get_power_meter_info()
+
+    assert meter_info == {
+        "unit_ids": [200],
+        "primary_unit_id": 200,
+        "phase_counts_by_unit_id": {200: 3},
+        "locations_by_unit_id": {200: 0},
+        "payload_shape": "Body.Data",
+    }
+
+
+def test_get_power_meter_info_returns_none_for_unrecognized_payload(monkeypatch) -> None:
+    client = FroniusWebClient("fixture-host")
+    monkeypatch.setattr(client, "_get_public_json", lambda path: {"unexpected": "payload"})
+
+    assert client.get_power_meter_info() is None
+
+
+def test_get_inverter_info_parses_live_payload(monkeypatch) -> None:
+    client = FroniusWebClient("fixture-host")
+    monkeypatch.setattr(client, "_get_json", lambda path: INVERTER_READABLE_PAYLOAD)
+
+    inverter_info = client.get_inverter_info()
+
+    assert inverter_info["temperature"] == pytest.approx(34.798126220703125)
+
+
+def test_get_storage_info_parses_live_payload(monkeypatch) -> None:
+    client = FroniusWebClient("fixture-host")
+    monkeypatch.setattr(client, "_get_json", lambda path: STORAGE_READABLE_PAYLOAD)
+
+    storage_info = client.get_storage_info()
+
+    assert storage_info == {
+        "manufacturer": "BYD",
+        "model": "HVB",
+        "serial": "BATTERY-SERIAL-01",
+        "cell_temperature": pytest.approx(14.45),
+    }
+
+
+def test_get_storage_info_returns_defaults_for_non_auth_failure(monkeypatch) -> None:
+    client = FroniusWebClient("fixture-host")
+
+    def _raise_runtime_error(_path: str):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(client, "_get_json", _raise_runtime_error)
+
+    assert client.get_storage_info() == {
+        "manufacturer": None,
+        "model": "Battery Storage",
+        "serial": None,
+        "cell_temperature": None,
+    }
+
+
+def test_get_storage_info_propagates_auth_failure(monkeypatch) -> None:
+    client = FroniusWebClient("fixture-host")
+
+    def _raise_auth_error(_path: str):
+        raise FroniusWebAuthError("auth failed")
+
+    monkeypatch.setattr(client, "_get_json", _raise_auth_error)
+
+    with pytest.raises(FroniusWebAuthError):
+        client.get_storage_info()

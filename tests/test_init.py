@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -8,7 +9,16 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST
 from homeassistant.core import HomeAssistant
 
-integration = importlib.import_module("custom_components.fronius_modbus.__init__")
+integration = importlib.import_module("custom_components.fronius_modbus")
+
+
+def test_test_harness_imports_the_production_package_object() -> None:
+    assert Path(integration.__file__).resolve() == (
+        Path(__file__).resolve().parents[1]
+        / "custom_components"
+        / "fronius_modbus"
+        / "__init__.py"
+    )
 
 
 class _FakeRuntimeData:

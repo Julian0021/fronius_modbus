@@ -4,10 +4,10 @@ from __future__ import annotations
 import logging
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from . import HubConfigEntry
 from .base import FroniusModbusBaseEntity
 from .const import (
     INVERTER_SENSOR_TYPES,
@@ -20,7 +20,7 @@ from .const import (
     SINGLE_PHASE_UNSUPPORTED_METER_SENSOR_KEYS,
     STORAGE_SENSOR_TYPES,
 )
-from .platform_setup import async_platform_context, entity_description_kwargs, extend_entities
+from .platform_setup import async_platform_context, entity_description_kwargs
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -57,44 +57,17 @@ def _build_sensor(
     )
 
 
-async def async_setup_entry(
-    hass: HomeAssistant,
-    config_entry: HubConfigEntry,
-    async_add_entities: AddEntitiesCallback,
-) -> None:
-    """Add sensors for passed config_entry in HA."""
-    hub, coordinator = await async_platform_context(hass, config_entry)
+def _iter_sensor_specs(hub):
+    for description in INVERTER_SENSOR_TYPES.values():
+        yield hub.device_info_inverter, description, description.key, None
 
-    entities = []
-    extend_entities(
-        entities,
-        INVERTER_SENSOR_TYPES.values(),
-        lambda description: _build_sensor(
-            coordinator=coordinator,
-            device_info=hub.device_info_inverter,
-            description=description,
-        ),
-    )
-    extend_entities(
-        entities,
-        INVERTER_SYMO_SENSOR_TYPES.values(),
-        lambda description: _build_sensor(
-            coordinator=coordinator,
-            device_info=hub.device_info_inverter,
-            description=description,
-        ),
-        include=hub.supports_three_phase_inverter,
-    )
-    extend_entities(
-        entities,
-        INVERTER_WEB_SENSOR_TYPES.values(),
-        lambda description: _build_sensor(
-            coordinator=coordinator,
-            device_info=hub.device_info_inverter,
-            description=description,
-        ),
-        include=hub.web_api_configured,
-    )
+    if hub.supports_three_phase_inverter:
+        for description in INVERTER_SYMO_SENSOR_TYPES.values():
+            yield hub.device_info_inverter, description, description.key, None
+
+    if hub.web_api_configured:
+        for description in INVERTER_WEB_SENSOR_TYPES.values():
+            yield hub.device_info_inverter, description, description.key, None
 
     if hub.mppt_configured:
         for module_id in hub.visible_mppt_module_ids:
@@ -102,14 +75,11 @@ async def async_setup_entry(
                 continue
             module_idx = module_id - 1
             for description in MPPT_MODULE_SENSOR_TYPES:
-                entities.append(
-                    _build_sensor(
-                        coordinator=coordinator,
-                        device_info=hub.device_info_inverter,
-                        description=description,
-                        key=f"mppt_module_{module_idx}_{description.key_suffix}",
-                        translation_placeholders={"module": str(module_id)},
-                    )
+                yield (
+                    hub.device_info_inverter,
+                    description,
+                    f"mppt_module_{module_idx}_{description.key_suffix}",
+                    {"module": str(module_id)},
                 )
 
     if hub.meter_configured:
@@ -122,34 +92,43 @@ async def async_setup_entry(
                     and description.key in SINGLE_PHASE_UNSUPPORTED_METER_SENSOR_KEYS
                 ):
                     continue
-                entities.append(
-                    _build_sensor(
-                        coordinator=coordinator,
-                        device_info=hub.get_device_info_meter(meter_unit_id),
-                        description=description,
-                        key=f"{prefix}{description.key}",
-                    )
+                yield (
+                    hub.get_device_info_meter(meter_unit_id),
+                    description,
+                    f"{prefix}{description.key}",
+                    None,
                 )
 
     if hub.storage_configured:
-        extend_entities(
-            entities,
-            INVERTER_STORAGE_SENSOR_TYPES.values(),
-            lambda description: _build_sensor(
-                coordinator=coordinator,
-                device_info=hub.device_info_inverter,
-                description=description,
-            ),
+        for description in INVERTER_STORAGE_SENSOR_TYPES.values():
+            yield hub.device_info_inverter, description, description.key, None
+        for description in STORAGE_SENSOR_TYPES.values():
+            yield hub.device_info_storage, description, description.key, None
+
+
+def iter_sensor_keys(hub):
+    for _device_info, _description, key, _translation_placeholders in _iter_sensor_specs(hub):
+        yield key
+
+
+async def async_setup_entry(
+    hass: HomeAssistant,
+    config_entry: ConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
+    """Add sensors for passed config_entry in HA."""
+    hub, coordinator = await async_platform_context(hass, config_entry)
+
+    entities = [
+        _build_sensor(
+            coordinator=coordinator,
+            device_info=device_info,
+            description=description,
+            key=key,
+            translation_placeholders=translation_placeholders,
         )
-        extend_entities(
-            entities,
-            STORAGE_SENSOR_TYPES.values(),
-            lambda description: _build_sensor(
-                coordinator=coordinator,
-                device_info=hub.device_info_storage,
-                description=description,
-            ),
-        )
+        for device_info, description, key, translation_placeholders in _iter_sensor_specs(hub)
+    ]
 
     async_add_entities(entities)
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import time
+from dataclasses import dataclass
 from functools import wraps
 from typing import Any
 
@@ -71,6 +72,16 @@ from .integration_errors import FroniusError, FroniusReadError
 from .storage_modes import derive_storage_extended_mode
 
 _LOGGER = logging.getLogger(__name__)
+
+
+@dataclass(slots=True)
+class _MpptModuleReadout:
+    labels: dict[int, str | None]
+    current: dict[int, Any]
+    voltage: dict[int, Any]
+    power: dict[int, Any]
+    lifetime_energy: dict[int, Any]
+    timestamp: dict[int, Any]
 
 
 def _safe_read(label: str):
@@ -608,22 +619,21 @@ class FroniusModbusReadService:
             else None
         )
 
-    @_safe_read("mppt")
-    async def read_mppt_data(self):
-        """Read MPPT model 160 data and derive storage topology."""
+    async def _prepare_mppt_model(self) -> tuple[int, int, int] | None:
+        """Discover model 160, persist its metadata, and refresh storage offsets."""
         if not await self._scan_sunspec_models():
-            return False
+            return None
 
         mppt_model = self._get_sunspec_model(SUNSPEC_MPPT_MODEL_ID)
         if mppt_model is None:
-            return False
+            return None
 
         mppt_model_length = int(mppt_model["length"])
         if (
             mppt_model_length < MPPT_MODEL_MIN_LENGTH
             or mppt_model_length > MPPT_MODEL_MAX_LENGTH
         ):
-            return False
+            return None
 
         mppt_read_address = int(mppt_model["l_address"])
         self._update_storage_base_address(
@@ -634,26 +644,32 @@ class FroniusModbusReadService:
         self._facade.data["mppt_register_address"] = mppt_read_address
         self._facade.data["mppt_model_id_address"] = int(mppt_model["id_address"])
 
+        self._update_storage_model_metadata()
+        return mppt_model_length, mppt_read_address, int(mppt_model["data_address"])
+
+    def _update_storage_model_metadata(self) -> None:
+        """Persist optional storage model metadata discovered during SunSpec scanning."""
         storage_model = self._get_sunspec_model(SUNSPEC_STORAGE_MODEL_ID)
-        if storage_model is not None:
-            storage_model_id = int(storage_model["id"])
-            storage_model_length = int(storage_model["length"])
-            self._facade.data["storage_model_id"] = storage_model_id
-            self._facade.data["storage_model_length"] = storage_model_length
-            self._facade.data["storage_model_address"] = int(storage_model["data_address"])
-            if storage_model_length == STORAGE_MODEL_LENGTH:
-                self._facade._storage_address = int(storage_model["data_address"])
-                self._facade.storage_configured = True
+        if storage_model is None:
+            return
 
-        regs = await self._facade.get_registers(
-            unit_id=self._facade._inverter_unit_id,
-            address=mppt_read_address,
-            count=mppt_model_length,
-        )
+        storage_model_id = int(storage_model["id"])
+        storage_model_length = int(storage_model["length"])
+        self._facade.data["storage_model_id"] = storage_model_id
+        self._facade.data["storage_model_length"] = storage_model_length
+        self._facade.data["storage_model_address"] = int(storage_model["data_address"])
+        if storage_model_length == STORAGE_MODEL_LENGTH:
+            self._facade._storage_address = int(storage_model["data_address"])
+            self._facade.storage_configured = True
 
+    def _resolve_mppt_module_layout(
+        self,
+        regs: list[int],
+    ) -> tuple[int, Any, Any, Any, Any, int, int] | None:
+        """Decode scale factors and the visible module count from the MPPT block."""
         model_limit = len(regs)
         if model_limit < MPPT_MODEL_MIN_REGISTERS:
-            return False
+            return None
 
         dt = self._facade._client.DATATYPE
         dca_sf = self._facade._client.convert_from_registers(
@@ -680,40 +696,102 @@ class FroniusModbusReadService:
             not self._facade.is_numeric(reported_module_count)
             or int(reported_module_count) <= 0
         ):
-            return False
+            return None
 
         max_modules_by_length = (
             model_limit - SUNSPEC_MODEL_HEADER_WORDS
         ) // MPPT_MODULE_BLOCK_WORDS
         module_count = min(int(reported_module_count), int(max_modules_by_length))
         if module_count <= 0:
-            return False
+            return None
 
         self._facade.mppt_module_count = module_count
         self._facade.data["mppt_module_count"] = module_count
+        return model_limit, dca_sf, dcv_sf, dcw_sf, dcwh_sf, int(reported_module_count), module_count
 
-        def read_u16(index: int):
-            if index + 1 > model_limit:
-                return None
-            return self._facade._client.convert_from_registers(
-                regs[index : index + 1],
-                data_type=dt.UINT16,
+    def _read_mppt_module_value(
+        self,
+        regs: list[int],
+        index: int,
+        *,
+        width: int,
+        data_type,
+    ) -> Any:
+        """Read one MPPT module value when enough registers are available."""
+        if index + width > len(regs):
+            return None
+        return self._facade._client.convert_from_registers(
+            regs[index : index + width],
+            data_type=data_type,
+        )
+
+    def _read_mppt_module_label(
+        self,
+        regs: list[int],
+        label_idx: int,
+        model_limit: int,
+    ) -> str | None:
+        """Decode a module label when the payload fits within the model block."""
+        if label_idx + MPPT_MODULE_LABEL_WORDS > model_limit:
+            return None
+        try:
+            return self._facade.get_string_from_registers(
+                regs[label_idx : label_idx + MPPT_MODULE_LABEL_WORDS]
             )
+        except (UnicodeDecodeError, ValueError):
+            return None
 
-        def read_u32(index: int):
-            if index + 2 > model_limit:
-                return None
-            return self._facade._client.convert_from_registers(
-                regs[index : index + 2],
-                data_type=dt.UINT32,
-            )
+    def _publish_mppt_module_values(
+        self,
+        module_id: int,
+        *,
+        label: str | None,
+        current: Any,
+        voltage: Any,
+        power: Any,
+        lifetime_energy: Any,
+        timestamp: Any,
+    ) -> None:
+        """Persist one MPPT module's normalized values into the flat runtime payload."""
+        self._facade.data[f"module{module_id}_label"] = label
+        self._facade.data[f"module{module_id}_power"] = power
+        self._facade.data[f"module{module_id}_lfte"] = lifetime_energy
+        self._facade.data[f"module{module_id}_tms"] = timestamp
 
-        module_power = {}
-        module_lfte = {}
-        module_tms = {}
-        module_labels = {}
-        module_current = {}
-        module_voltage = {}
+        module_idx = module_id - 1
+        self._facade.data[f"mppt_module_{module_idx}_label"] = label
+        self._facade.data[f"mppt_module_{module_idx}_dc_current"] = current
+        self._facade.data[f"mppt_module_{module_idx}_dc_voltage"] = voltage
+        self._facade.data[f"mppt_module_{module_idx}_dc_power"] = power
+        self._facade.data[
+            f"mppt_module_{module_idx}_lifetime_energy"
+        ] = self.protect_lfte(
+            f"mppt_module_{module_idx}_lifetime_energy",
+            lifetime_energy,
+        )
+        self._facade.data[f"mppt_module_{module_idx}_timestamp"] = timestamp
+
+    def _read_mppt_modules(
+        self,
+        regs: list[int],
+        *,
+        model_limit: int,
+        module_count: int,
+        dca_sf,
+        dcv_sf,
+        dcw_sf,
+        dcwh_sf,
+    ) -> _MpptModuleReadout:
+        """Decode and publish per-module MPPT values."""
+        dt = self._facade._client.DATATYPE
+        readout = _MpptModuleReadout(
+            labels={},
+            current={},
+            voltage={},
+            power={},
+            lifetime_energy={},
+            timestamp={},
+        )
 
         for module_id in range(1, module_count + 1):
             module_offset = MPPT_MODULE_BLOCK_WORDS * (module_id - 1)
@@ -724,33 +802,59 @@ class FroniusModbusReadService:
             lfte_idx = module_offset + MPPT_MODULE_LIFETIME_ENERGY_OFFSET
             tms_idx = module_offset + MPPT_MODULE_TIMESTAMP_OFFSET
 
-            label = None
-            if label_idx + MPPT_MODULE_LABEL_WORDS <= model_limit:
-                try:
-                    label = self._facade.get_string_from_registers(
-                        regs[label_idx : label_idx + MPPT_MODULE_LABEL_WORDS]
-                    )
-                except (UnicodeDecodeError, ValueError):
-                    label = None
-            module_labels[module_id] = label
+            label = self._read_mppt_module_label(regs, label_idx, model_limit)
+            raw_current = self._sanitize_mppt_u16(
+                self._read_mppt_module_value(
+                    regs,
+                    current_idx,
+                    width=1,
+                    data_type=dt.UINT16,
+                )
+            )
+            raw_voltage = self._sanitize_mppt_u16(
+                self._read_mppt_module_value(
+                    regs,
+                    voltage_idx,
+                    width=1,
+                    data_type=dt.UINT16,
+                )
+            )
+            raw_power = self._sanitize_mppt_u16(
+                self._read_mppt_module_value(
+                    regs,
+                    power_idx,
+                    width=1,
+                    data_type=dt.UINT16,
+                )
+            )
+            raw_lfte = self._sanitize_mppt_u32(
+                self._read_mppt_module_value(
+                    regs,
+                    lfte_idx,
+                    width=2,
+                    data_type=dt.UINT32,
+                )
+            )
+            raw_tms = self._sanitize_mppt_u32(
+                self._read_mppt_module_value(
+                    regs,
+                    tms_idx,
+                    width=2,
+                    data_type=dt.UINT32,
+                )
+            )
 
-            raw_current = self._sanitize_mppt_u16(read_u16(current_idx))
-            raw_voltage = self._sanitize_mppt_u16(read_u16(voltage_idx))
-            raw_power = self._sanitize_mppt_u16(read_u16(power_idx))
-            raw_lfte = self._sanitize_mppt_u32(read_u32(lfte_idx))
-            raw_tms = self._sanitize_mppt_u32(read_u32(tms_idx))
-
-            module_current[module_id] = (
+            current = (
                 self._facade.calculate_value(raw_current, dca_sf, 2, 0, 100)
                 if raw_current is not None
                 else None
             )
-            module_voltage[module_id] = (
+            voltage = (
                 self._facade.calculate_value(raw_voltage, dcv_sf, 2, 0, 1500)
                 if raw_voltage is not None
                 else None
             )
-            module_power[module_id] = (
+            power = (
                 self._facade.calculate_value(raw_power, dcw_sf, 2, 0, 15000)
                 if raw_power is not None
                 else None
@@ -761,37 +865,35 @@ class FroniusModbusReadService:
                 and raw_voltage is None
                 and raw_power is None
             ):
-                module_lfte[module_id] = None
+                lifetime_energy = None
             else:
-                module_lfte[module_id] = self._facade.calculate_value(raw_lfte, dcwh_sf)
-            module_tms[module_id] = raw_tms
+                lifetime_energy = self._facade.calculate_value(raw_lfte, dcwh_sf)
 
-            self._facade.data[f"module{module_id}_label"] = label
-            self._facade.data[f"module{module_id}_power"] = module_power[module_id]
-            self._facade.data[f"module{module_id}_lfte"] = module_lfte[module_id]
-            self._facade.data[f"module{module_id}_tms"] = module_tms[module_id]
+            readout.labels[module_id] = label
+            readout.current[module_id] = current
+            readout.voltage[module_id] = voltage
+            readout.power[module_id] = power
+            readout.lifetime_energy[module_id] = lifetime_energy
+            readout.timestamp[module_id] = raw_tms
 
-            module_idx = module_id - 1
-            self._facade.data[f"mppt_module_{module_idx}_label"] = label
-            self._facade.data[f"mppt_module_{module_idx}_dc_current"] = module_current[
-                module_id
-            ]
-            self._facade.data[f"mppt_module_{module_idx}_dc_voltage"] = module_voltage[
-                module_id
-            ]
-            self._facade.data[f"mppt_module_{module_idx}_dc_power"] = module_power[
-                module_id
-            ]
-            self._facade.data[
-                f"mppt_module_{module_idx}_lifetime_energy"
-            ] = self.protect_lfte(
-                f"mppt_module_{module_idx}_lifetime_energy",
-                module_lfte[module_id],
+            self._publish_mppt_module_values(
+                module_id,
+                label=label,
+                current=current,
+                voltage=voltage,
+                power=power,
+                lifetime_energy=lifetime_energy,
+                timestamp=raw_tms,
             )
-            self._facade.data[f"mppt_module_{module_idx}_timestamp"] = module_tms[
-                module_id
-            ]
 
+        return readout
+
+    def _resolve_storage_transfer_modules(
+        self,
+        module_labels: dict[int, str | None],
+        module_count: int,
+    ) -> tuple[int | None, int | None]:
+        """Derive which MPPT modules represent storage charge/discharge transfers."""
         storage_charge_module = None
         storage_discharge_module = None
         for module_id, label in module_labels.items():
@@ -811,6 +913,16 @@ class FroniusModbusReadService:
             storage_charge_module = module_count - 1
             storage_discharge_module = module_count
 
+        return storage_charge_module, storage_discharge_module
+
+    def _publish_storage_transfer_modules(
+        self,
+        readout: _MpptModuleReadout,
+        *,
+        storage_charge_module: int | None,
+        storage_discharge_module: int | None,
+    ) -> None:
+        """Populate the storage transfer fields from the decoded MPPT readout."""
         if (
             self._facade.storage_configured
             and storage_charge_module
@@ -819,51 +931,76 @@ class FroniusModbusReadService:
             self._set_storage_transfer_data(
                 "charge",
                 storage_charge_module,
-                module_current,
-                module_voltage,
-                module_power,
-                module_lfte,
+                readout.current,
+                readout.voltage,
+                readout.power,
+                readout.lifetime_energy,
             )
             self._set_storage_transfer_data(
                 "discharge",
                 storage_discharge_module,
-                module_current,
-                module_voltage,
-                module_power,
-                module_lfte,
+                readout.current,
+                readout.voltage,
+                readout.power,
+                readout.lifetime_energy,
             )
-        else:
-            self._set_storage_transfer_data(
-                "charge",
-                None,
-                module_current,
-                module_voltage,
-                module_power,
-                module_lfte,
-            )
-            self._set_storage_transfer_data(
-                "discharge",
-                None,
-                module_current,
-                module_voltage,
-                module_power,
-                module_lfte,
-            )
+            return
 
-        pv_modules = []
-        for module_id, label in module_labels.items():
-            if isinstance(label, str) and "MPPT" in label.upper():
-                pv_modules.append(module_id)
-        if not pv_modules:
-            if storage_charge_module and storage_discharge_module:
-                pv_modules = [
-                    module_id
-                    for module_id in range(1, module_count + 1)
-                    if module_id not in [storage_charge_module, storage_discharge_module]
-                ]
-            else:
-                pv_modules = list(range(1, module_count + 1))
+        self._set_storage_transfer_data(
+            "charge",
+            None,
+            readout.current,
+            readout.voltage,
+            readout.power,
+            readout.lifetime_energy,
+        )
+        self._set_storage_transfer_data(
+            "discharge",
+            None,
+            readout.current,
+            readout.voltage,
+            readout.power,
+            readout.lifetime_energy,
+        )
 
+    def _resolve_visible_pv_modules(
+        self,
+        module_labels: dict[int, str | None],
+        *,
+        module_count: int,
+        storage_charge_module: int | None,
+        storage_discharge_module: int | None,
+    ) -> list[int]:
+        """Return the MPPT module ids that should be exposed as PV-facing modules."""
+        pv_modules = [
+            module_id
+            for module_id, label in module_labels.items()
+            if isinstance(label, str) and "MPPT" in label.upper()
+        ]
+        if pv_modules:
+            return pv_modules
+
+        if storage_charge_module and storage_discharge_module:
+            return [
+                module_id
+                for module_id in range(1, module_count + 1)
+                if module_id not in [storage_charge_module, storage_discharge_module]
+            ]
+        return list(range(1, module_count + 1))
+
+    def _publish_mppt_summary(
+        self,
+        *,
+        mppt_read_address: int,
+        mppt_model_length: int,
+        reported_module_count: int,
+        pv_modules: list[int],
+        storage_charge_module: int | None,
+        storage_discharge_module: int | None,
+        module_labels: dict[int, str | None],
+        module_power: dict[int, Any],
+    ) -> None:
+        """Persist the aggregate MPPT values and emit the debug summary log."""
         self._facade.data["mppt_visible_module_ids"] = pv_modules
         pv_values = [
             module_power.get(module_id)
@@ -882,6 +1019,66 @@ class FroniusModbusReadService:
             storage_charge_module,
             storage_discharge_module,
             module_labels,
+        )
+
+    @_safe_read("mppt")
+    async def read_mppt_data(self):
+        """Read MPPT model 160 data and derive storage topology."""
+        model_metadata = await self._prepare_mppt_model()
+        if model_metadata is None:
+            return False
+
+        mppt_model_length, mppt_read_address, _mppt_data_address = model_metadata
+        regs = await self._facade.get_registers(
+            unit_id=self._facade._inverter_unit_id,
+            address=mppt_read_address,
+            count=mppt_model_length,
+        )
+        module_layout = self._resolve_mppt_module_layout(regs)
+        if module_layout is None:
+            return False
+
+        (
+            model_limit,
+            dca_sf,
+            dcv_sf,
+            dcw_sf,
+            dcwh_sf,
+            reported_module_count,
+            module_count,
+        ) = module_layout
+        readout = self._read_mppt_modules(
+            regs,
+            model_limit=model_limit,
+            module_count=module_count,
+            dca_sf=dca_sf,
+            dcv_sf=dcv_sf,
+            dcw_sf=dcw_sf,
+            dcwh_sf=dcwh_sf,
+        )
+        storage_charge_module, storage_discharge_module = (
+            self._resolve_storage_transfer_modules(readout.labels, module_count)
+        )
+        self._publish_storage_transfer_modules(
+            readout,
+            storage_charge_module=storage_charge_module,
+            storage_discharge_module=storage_discharge_module,
+        )
+        pv_modules = self._resolve_visible_pv_modules(
+            readout.labels,
+            module_count=module_count,
+            storage_charge_module=storage_charge_module,
+            storage_discharge_module=storage_discharge_module,
+        )
+        self._publish_mppt_summary(
+            mppt_read_address=mppt_read_address,
+            mppt_model_length=mppt_model_length,
+            reported_module_count=reported_module_count,
+            pv_modules=pv_modules,
+            storage_charge_module=storage_charge_module,
+            storage_discharge_module=storage_discharge_module,
+            module_labels=readout.labels,
+            module_power=readout.power,
         )
 
         return True

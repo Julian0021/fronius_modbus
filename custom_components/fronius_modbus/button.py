@@ -9,27 +9,34 @@ from .platform_setup import (
     descriptor_is_available,
     dispatch_service_action,
     entity_description_kwargs,
-    extend_entities,
 )
+
+
+def _iter_button_descriptions(hub):
+    if hub.web_api_configured:
+        for description in INVERTER_API_BUTTON_TYPES:
+            yield hub.device_info_inverter, description
+
+
+def iter_button_keys(hub):
+    for _device_info, description in _iter_button_descriptions(hub):
+        yield description.key
 
 
 async def async_setup_entry(hass, config_entry, async_add_entities) -> None:
     hub, coordinator = await async_platform_context(hass, config_entry)
 
-    entities = []
-    extend_entities(
-        entities,
-        INVERTER_API_BUTTON_TYPES,
-        lambda description: FroniusModbusButton(
+    entities = [
+        FroniusModbusButton(
             hub=hub,
             **entity_description_kwargs(
                 coordinator=coordinator,
-                device_info=hub.device_info_inverter,
+                device_info=device_info,
                 description=description,
             ),
-        ),
-        include=hub.web_api_configured,
-    )
+        )
+        for device_info, description in _iter_button_descriptions(hub)
+    ]
 
     async_add_entities(entities)
 

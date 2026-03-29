@@ -9,7 +9,6 @@ from .platform_setup import (
     descriptor_is_available,
     dispatch_service_action,
     entity_description_kwargs,
-    extend_entities,
 )
 
 
@@ -20,49 +19,38 @@ def _option_key(options: dict[int, str], selection: str) -> int | None:
     return None
 
 
+def _iter_select_descriptions(hub):
+    if hub.storage_configured:
+        for description in STORAGE_MODBUS_SELECT_TYPES:
+            yield hub.device_info_storage, description
+
+    if hub.storage_configured and hub.web_api_configured:
+        for description in STORAGE_API_SELECT_TYPES:
+            yield hub.device_info_storage, description
+
+    for description in INVERTER_SELECT_TYPES:
+        yield hub.device_info_inverter, description
+
+
+def iter_select_keys(hub):
+    for _device_info, description in _iter_select_descriptions(hub):
+        yield description.key
+
+
 async def async_setup_entry(hass, config_entry, async_add_entities) -> None:
     hub, coordinator = await async_platform_context(hass, config_entry)
 
-    entities = []
-
-    extend_entities(
-        entities,
-        STORAGE_MODBUS_SELECT_TYPES,
-        lambda description: FroniusModbusSelect(
+    entities = [
+        FroniusModbusSelect(
             hub=hub,
             **entity_description_kwargs(
                 coordinator=coordinator,
-                device_info=hub.device_info_storage,
+                device_info=device_info,
                 description=description,
             ),
-        ),
-        include=hub.storage_configured,
-    )
-    extend_entities(
-        entities,
-        STORAGE_API_SELECT_TYPES,
-        lambda description: FroniusModbusSelect(
-            hub=hub,
-            **entity_description_kwargs(
-                coordinator=coordinator,
-                device_info=hub.device_info_storage,
-                description=description,
-            ),
-        ),
-        include=hub.storage_configured and hub.web_api_configured,
-    )
-    extend_entities(
-        entities,
-        INVERTER_SELECT_TYPES,
-        lambda description: FroniusModbusSelect(
-            hub=hub,
-            **entity_description_kwargs(
-                coordinator=coordinator,
-                device_info=hub.device_info_inverter,
-                description=description,
-            ),
-        ),
-    )
+        )
+        for device_info, description in _iter_select_descriptions(hub)
+    ]
 
     async_add_entities(entities)
 

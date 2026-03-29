@@ -100,4 +100,5 @@ def ac_limit_watts_to_raw(
 
 def signed_percent_to_register(rate: float) -> int:
     """Encode a signed percent value into the inverter register format."""
-    return int(65536 + (rate * 100)) if rate < 0 else int(round(rate * 100))
+    raw_value = int(round(rate * 100))
+    return 65536 + raw_value if raw_value < 0 else raw_value

@@ -12,7 +12,6 @@ from .platform_setup import (
     descriptor_number_write_value,
     dispatch_service_action,
     entity_description_kwargs,
-    extend_entities,
 )
 
 
@@ -25,64 +24,69 @@ def _resolve_max_value(hub: Hub, description) -> float:
     return description.maximum
 
 
+def _iter_number_specs(hub: Hub):
+    if hub.storage_configured:
+        for description in STORAGE_MODBUS_NUMBER_TYPES:
+            yield (
+                hub.device_info_storage,
+                description,
+                {
+                    "minimum": description.minimum,
+                    "maximum": _resolve_max_value(hub, description),
+                    "unit": description.unit,
+                    "mode": description.mode,
+                    "native_step": description.step,
+                },
+            )
+
+    if hub.storage_configured and hub.web_api_configured:
+        for description in STORAGE_API_NUMBER_TYPES:
+            yield (
+                hub.device_info_storage,
+                description,
+                {
+                    "minimum": description.minimum,
+                    "maximum": description.maximum,
+                    "unit": description.unit,
+                    "mode": description.mode,
+                    "native_step": description.step,
+                },
+            )
+
+    for description in INVERTER_NUMBER_TYPES:
+        yield (
+            hub.device_info_inverter,
+            description,
+            {
+                "minimum": description.minimum,
+                "maximum": _resolve_max_value(hub, description),
+                "unit": description.unit,
+                "mode": description.mode,
+                "native_step": description.step,
+            },
+        )
+
+
+def iter_number_keys(hub: Hub):
+    for _device_info, description, _extra_kwargs in _iter_number_specs(hub):
+        yield description.key
+
+
 async def async_setup_entry(hass, config_entry, async_add_entities) -> None:
     hub, coordinator = await async_platform_context(hass, config_entry)
 
-    entities = []
-
-    extend_entities(
-        entities,
-        STORAGE_MODBUS_NUMBER_TYPES,
-        lambda description: FroniusModbusNumber(
+    entities = [
+        FroniusModbusNumber(
             hub=hub,
             **entity_description_kwargs(
                 coordinator=coordinator,
-                device_info=hub.device_info_storage,
+                device_info=device_info,
                 description=description,
-                minimum=description.minimum,
-                maximum=_resolve_max_value(hub, description),
-                unit=description.unit,
-                mode=description.mode,
-                native_step=description.step,
+                **extra_kwargs,
             ),
-        ),
-        include=hub.storage_configured,
-    )
-    extend_entities(
-        entities,
-        STORAGE_API_NUMBER_TYPES,
-        lambda description: FroniusModbusNumber(
-            hub=hub,
-            **entity_description_kwargs(
-                coordinator=coordinator,
-                device_info=hub.device_info_storage,
-                description=description,
-                minimum=description.minimum,
-                maximum=description.maximum,
-                unit=description.unit,
-                mode=description.mode,
-                native_step=description.step,
-            ),
-        ),
-        include=hub.storage_configured and hub.web_api_configured,
-    )
-    extend_entities(
-        entities,
-        INVERTER_NUMBER_TYPES,
-        lambda description: FroniusModbusNumber(
-            hub=hub,
-            **entity_description_kwargs(
-                coordinator=coordinator,
-                device_info=hub.device_info_inverter,
-                description=description,
-                minimum=description.minimum,
-                maximum=_resolve_max_value(hub, description),
-                unit=description.unit,
-                mode=description.mode,
-                native_step=description.step,
-            ),
-        ),
-    )
+        )
+        for device_info, description, extra_kwargs in _iter_number_specs(hub)
+    ]
 
     async_add_entities(entities)
 

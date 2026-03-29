@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal, TypeAlias
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorStateClass
 from homeassistant.helpers.entity import EntityCategory
@@ -52,6 +52,24 @@ ATTR_MANUFACTURER = "Fronius"
 SUPPORTED_MANUFACTURERS = ["Fronius"]
 SUPPORTED_MODELS = ["Primo GEN24", "Symo GEN24", "Verto"]
 
+AvailabilityPolicy: TypeAlias = Literal[
+    "always",
+    "web_api",
+    "storage_web_api",
+    "data_not_none",
+    "web_api_manual_mode",
+    "storage_mode",
+]
+
+AVAILABILITY_POLICIES: tuple[AvailabilityPolicy, ...] = (
+    "always",
+    "web_api",
+    "storage_web_api",
+    "data_not_none",
+    "web_api_manual_mode",
+    "storage_mode",
+)
+
 
 @dataclass(frozen=True, slots=True)
 class SelectEntitySpec:
@@ -59,7 +77,7 @@ class SelectEntitySpec:
     key: str
     options: dict[int, str]
     action: str | None = None
-    availability: str = "always"
+    availability: AvailabilityPolicy = "always"
     action_service: str | None = None
 
 
@@ -76,7 +94,7 @@ class NumberEntitySpec:
     action: str | None = None
     value_transform: str | None = None
     display_scale: str | None = None
-    availability: str = "always"
+    availability: AvailabilityPolicy = "always"
     mode_capability: str | None = None
     available_modes: tuple[int, ...] | None = None
     action_service: str | None = None
@@ -92,7 +110,7 @@ class ToggleEntitySpec:
     turn_on_kwargs: dict[str, Any] = field(default_factory=dict)
     turn_off_action: str | None = None
     turn_off_kwargs: dict[str, Any] = field(default_factory=dict)
-    availability: str = "always"
+    availability: AvailabilityPolicy = "always"
     turn_on_service: str | None = None
     turn_off_service: str | None = None
 
@@ -104,7 +122,7 @@ class ButtonEntitySpec:
     icon: str
     entity_category: EntityCategory | None = None
     action: str | None = None
-    availability: str = "always"
+    availability: AvailabilityPolicy = "always"
     action_service: str | None = None
 
 

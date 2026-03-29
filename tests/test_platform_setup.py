@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from types import SimpleNamespace
 
+import pytest
 from homeassistant.core import HomeAssistant
 
 from custom_components.fronius_modbus import (
@@ -207,6 +208,32 @@ def test_descriptor_helpers_cover_entity_policies() -> None:
     )
     assert result is None
     assert calls == [("set_solar_api_enabled", (), {"enabled": True})]
+
+
+def test_descriptor_helpers_reject_unknown_availability_policies() -> None:
+    invalid_description = SimpleNamespace(
+        translation_key="invalid",
+        key="invalid_key",
+        availability="definitely_not_real",
+    )
+
+    with pytest.raises(ValueError, match="Unsupported availability policy"):
+        entity_description_kwargs(
+            coordinator="coordinator",
+            device_info="device",
+            description=invalid_description,
+        )
+
+    with pytest.raises(ValueError, match="Unsupported availability policy"):
+        descriptor_is_available(
+            hub=SimpleNamespace(
+                web_api_configured=True,
+                storage_configured=True,
+                storage_extended_control_mode=0,
+            ),
+            coordinator=SimpleNamespace(data={}),
+            description=invalid_description,
+        )
 
 
 def test_sensor_platform_setup_covers_meter_mppt_and_storage_gating() -> None:

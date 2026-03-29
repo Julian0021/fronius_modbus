@@ -1,8 +1,9 @@
 """Shared helpers for entity platform setup."""
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
+from .const import AVAILABILITY_POLICIES, AvailabilityPolicy
 from .storage_modes import storage_mode_supports
 from .translation import async_ensure_translation_cache
 
@@ -31,6 +32,8 @@ def entity_description_kwargs(
     **extra,
 ):
     """Build the common constructor kwargs shared by descriptor-backed entities."""
+    _resolve_descriptor_availability(description)
+
     kwargs = {
         "coordinator": coordinator,
         "device_info": device_info,
@@ -53,6 +56,17 @@ def entity_description_kwargs(
 
     kwargs.update(extra)
     return kwargs
+
+
+def _resolve_descriptor_availability(description) -> AvailabilityPolicy:
+    """Return a validated descriptor availability policy."""
+    availability = getattr(description, "availability", "always")
+    if availability not in AVAILABILITY_POLICIES:
+        descriptor_key = getattr(description, "key", "<unknown>")
+        raise ValueError(
+            f"Unsupported availability policy {availability!r} for descriptor {descriptor_key!r}"
+        )
+    return cast(AvailabilityPolicy, availability)
 
 
 async def dispatch_service_action(
@@ -89,7 +103,7 @@ async def dispatch_hub_action(
 
 def descriptor_is_available(hub, coordinator, description) -> bool:
     """Evaluate the descriptor-specific availability policy."""
-    availability = getattr(description, "availability", "always")
+    availability = _resolve_descriptor_availability(description)
     data = coordinator.data if isinstance(coordinator.data, dict) else {}
 
     if availability == "always":
@@ -114,7 +128,7 @@ def descriptor_is_available(hub, coordinator, description) -> bool:
             )
         available_modes = getattr(description, "available_modes", None) or ()
         return hub.storage_extended_control_mode in available_modes
-    return True
+    raise AssertionError(f"Unhandled availability policy: {availability}")
 
 
 def descriptor_native_number_value(hub, description, value: Any):

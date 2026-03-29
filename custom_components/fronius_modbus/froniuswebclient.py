@@ -87,6 +87,49 @@ def _parse_storage_info(attributes: Any) -> dict[str, str | None]:
     }
 
 
+def _parse_storage_readable(payload: Any) -> dict[str, Any]:
+    info = _parse_storage_info(None)
+    info["cell_temperature"] = None
+
+    nodes, _ = _body_data(payload, "Body", "Data")
+    if not isinstance(nodes, dict):
+        return info
+
+    device = next(iter(nodes.values()), {})
+    if not isinstance(device, dict):
+        return info
+
+    attributes = device.get("attributes") if isinstance(device.get("attributes"), dict) else None
+    channels = device.get("channels") if isinstance(device.get("channels"), dict) else None
+
+    info.update(_parse_storage_info(attributes))
+    if channels is not None:
+        value = channels.get("BAT_TEMPERATURE_CELL_F64")
+        if isinstance(value, (int, float)):
+            info["cell_temperature"] = float(value)
+    return info
+
+
+def _parse_inverter_readable(payload: Any) -> dict[str, Any]:
+    info: dict[str, Any] = {"temperature": None}
+    nodes, _ = _body_data(payload, "Body", "Data")
+    if not isinstance(nodes, dict):
+        return info
+
+    device = next(iter(nodes.values()), {})
+    if not isinstance(device, dict):
+        return info
+
+    channels = device.get("channels") if isinstance(device.get("channels"), dict) else None
+    if channels is None:
+        return info
+
+    value = channels.get("DEVICE_TEMPERATURE_AMBIENTMEAN_01_F32")
+    if isinstance(value, (int, float)):
+        info["temperature"] = float(value)
+    return info
+
+
 def _body_data(payload: Any, *path: str) -> tuple[dict[str, Any] | None, str | None]:
     if not isinstance(payload, dict):
         return None, None
@@ -110,6 +153,7 @@ def _parse_power_meter_info(
         "unit_ids": [],
         "primary_unit_id": None,
         "phase_counts_by_unit_id": {},
+        "locations_by_unit_id": {},
         "payload_shape": payload_shape,
     }
 
@@ -141,6 +185,7 @@ def _parse_power_meter_info(
                 "unit_id": int(meter_address_offset) + rtu_addr - 1,
                 "rtu_addr": rtu_addr,
                 "is_primary": label == "<primary>" or location == "0",
+                "location": _as_int(location, -1),
                 "phase_count": phase_count if phase_count > 0 else None,
             }
         )
@@ -159,6 +204,8 @@ def _parse_power_meter_info(
         unit_ids.append(unit_id)
         if meter["phase_count"] is not None:
             result["phase_counts_by_unit_id"][unit_id] = meter["phase_count"]
+        if meter["location"] >= 0:
+            result["locations_by_unit_id"][unit_id] = meter["location"]
         if result["primary_unit_id"] is None and meter["is_primary"]:
             result["primary_unit_id"] = unit_id
 
@@ -355,7 +402,15 @@ class FroniusWebClient:
     def _get_json(self, path: str) -> dict[str, Any]:
         return self._request("get", path).json()
 
-    def _post_ok(self, path: str, payload: dict[str, Any]) -> bool:
+    def _get_public_json(self, path: str) -> dict[str, Any]:
+        response = requests.get(
+            f"http://{self._host}{path}",
+            timeout=self._timeout,
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def _post_ok(self, path: str, payload: dict[str, Any] | None = None) -> bool:
         return self._request("post", path, payload=payload).ok
 
     def issued_token(self) -> dict[str, str] | None:
@@ -385,25 +440,34 @@ class FroniusWebClient:
     def get_modbus_config(self) -> dict[str, Any]:
         return self._get_json("/api/config/modbus")
 
-    def get_storage_info(self) -> dict[str, str | None]:
+    def get_solar_api_config(self) -> dict[str, Any]:
+        return self._get_json("/api/config/solar_api")
+
+    def get_storage_info(self) -> dict[str, Any]:
         try:
-            nodes, _ = _body_data(
-                self._get_json("/api/components/BatteryManagementSystem/readable"),
-                "Body",
-                "Data",
+            return _parse_storage_readable(
+                self._get_json("/api/components/BatteryManagementSystem/readable")
             )
-            device = next(iter(nodes.values()), {}) if isinstance(nodes, dict) else {}
-            attributes = device.get("attributes") if isinstance(device, dict) else None
-            return _parse_storage_info(attributes)
         except FroniusWebAuthError:
             raise
         except Exception as err:
             _LOGGER.warning("Failed reading storage identity via web API from %s: %s", self._host, err)
-        return _parse_storage_info(None)
+        return _parse_storage_readable(None)
+
+    def get_inverter_info(self) -> dict[str, Any]:
+        try:
+            return _parse_inverter_readable(
+                self._get_json("/api/components/inverter/readable")
+            )
+        except FroniusWebAuthError:
+            raise
+        except Exception as err:
+            _LOGGER.warning("Failed reading inverter readable data via web API from %s: %s", self._host, err)
+        return _parse_inverter_readable(None)
 
     def get_power_meter_info(self, meter_address_offset: int = 200) -> dict[str, Any] | None:
         try:
-            data = self._get_json("/api/components/PowerMeter/readable")
+            data = self._get_public_json("/api/components/PowerMeter/readable")
             meter_info = _parse_power_meter_info(data, meter_address_offset)
             if meter_info is None:
                 top_level_keys = list(data.keys()) if isinstance(data, dict) else []
@@ -422,8 +486,6 @@ class FroniusWebClient:
                 meter_info.get("primary_unit_id"),
             )
             return meter_info
-        except FroniusWebAuthError:
-            raise
         except Exception as err:
             _LOGGER.warning("Failed reading power meter config via web API from %s: %s", self._host, err)
         return None
@@ -482,6 +544,16 @@ class FroniusWebClient:
 
     def get_battery_config(self) -> dict[str, Any]:
         return self._get_json("/api/config/batteries")
+
+    def set_solar_api_enabled(self, enabled: bool) -> bool:
+        payload = {
+            "SolarAPIv1Enabled": bool(enabled),
+            "activeOnExternalDevicesDiscovered": False,
+        }
+        return self._post_ok("/api/config/solar_api", payload)
+
+    def reset_modbus_control(self) -> bool:
+        return self._post_ok("/api/commands/ModbusReset")
 
     def set_battery_config(
         self,

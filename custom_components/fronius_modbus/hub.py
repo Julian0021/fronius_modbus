@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import time
 from datetime import timedelta
 from typing import Any
@@ -22,18 +23,26 @@ from .const import (
     DOMAIN,
     ENTITY_PREFIX,
     API_USERNAME,
+    SOLAR_API_LOW_FIRMWARE_ISSUE_ID_PREFIX,
     MIGRATION_RECONFIGURE_ISSUE_ID_PREFIX,
 )
 from .token_store import async_get_token_store
 
 _LOGGER = logging.getLogger(__name__)
+_SOLAR_API_WARNING_TRANSLATION_KEY = "solar_api_low_firmware"
+_SOLAR_API_MINIMUM_VERSION = (1, 40, 7, 1)
+_SOLAR_API_MINIMUM_VERSION_TEXT = "1.40.7-1"
+_SOLAR_API_FIRMWARE_RE = re.compile(r"^(\d+)\.(\d+)\.(\d+)(?:-(\d+))?$")
 
 WEB_API_DATA_KEYS = (
+    "inverter_temperature",
     "api_modbus_mode",
     "api_modbus_control",
     "api_modbus_sunspec_mode",
     "api_modbus_restriction",
     "api_modbus_restriction_ip",
+    "api_solar_api_enabled",
+    "storage_temperature",
     "api_battery_mode_raw",
     "api_battery_mode_effective_raw",
     "api_battery_mode_consistent",
@@ -50,6 +59,15 @@ WEB_API_DATA_KEYS = (
 
 BATTERY_WRITE_MODBUS_RECOVERY_SECONDS = 30.0
 BATTERY_WRITE_WEB_REFRESH_DELAY_SECONDS = 10.0
+# Load is derived from separate inverter/meter polls, so keep a small skew guard.
+LOAD_MAX_SAMPLE_SKEW_SECONDS = 0.5
+# Fronius occasionally drops inverter AC power to ~0 for one poll while PV is clearly active.
+LOAD_GLITCH_MIN_EXPORT_W = 1000.0
+LOAD_GLITCH_MAX_ABS_INVERTER_W = 50.0
+LOAD_GLITCH_MIN_PV_W = 1000.0
+# During strong battery charging on Verto, meter export can exceed inverter AC power and
+# the simple grid-meter formula produces bogus negative/zero load values.
+LOAD_STORAGE_CHARGE_MIN_W = 1000.0
 
 
 class FroniusCoordinator(DataUpdateCoordinator):
@@ -85,6 +103,8 @@ class FroniusCoordinator(DataUpdateCoordinator):
     async def _async_update_data(self) -> dict:
         """Fetch all data from Fronius device."""
         core_err: Exception | None = None
+        self.hub.data["load"] = None
+        self.hub._client.start_load_poll_cycle()
         try:
             core_ok = await self.hub._client.read_inverter_data()
             if not core_ok:
@@ -152,6 +172,9 @@ class Hub:
         self._battery_write_transition_until = 0.0
         self._battery_write_transition_warned = False
         self._delayed_web_refresh_task: asyncio.Task | None = None
+        self._last_good_load_w: float | None = None
+        self._last_good_inverter_power_w: float | None = None
+        self._consecutive_bad_load_polls = 0
 
     def toggle_busy(func):
         async def wrapper(self, *args, **kwargs):
@@ -173,6 +196,109 @@ class Hub:
     def _meter_prefix(self, unit_id: int) -> str:
         return f"meter_{int(unit_id)}_"
 
+    def _reset_bad_load_tracking(self) -> None:
+        self._consecutive_bad_load_polls = 0
+
+    def _set_load(
+        self,
+        load_w: float,
+        *,
+        cache: bool = False,
+        inverter_power: float | None = None,
+    ) -> None:
+        load_value = round(float(load_w), 2)
+        self.data["load"] = load_value
+        if cache:
+            self._last_good_load_w = load_value
+            if inverter_power is not None:
+                self._last_good_inverter_power_w = float(inverter_power)
+        self._reset_bad_load_tracking()
+
+    def _is_inverter_power_glitch(
+        self,
+        *,
+        candidate_load: float,
+        meter_power: float,
+        inverter_power: float,
+    ) -> bool:
+        pv_power = self.data.get("pv_power")
+        pv_active = self._client.is_numeric(pv_power) and float(pv_power) >= LOAD_GLITCH_MIN_PV_W
+        previous_inverter_active = self._last_good_inverter_power_w is not None and (
+            self._last_good_inverter_power_w >= LOAD_GLITCH_MIN_PV_W
+        )
+        return (
+            candidate_load < 0
+            and meter_power <= -LOAD_GLITCH_MIN_EXPORT_W
+            and abs(inverter_power) <= LOAD_GLITCH_MAX_ABS_INVERTER_W
+            and (pv_active or previous_inverter_active)
+        )
+
+    def _apply_glitch_load_fallback(self) -> None:
+        self._consecutive_bad_load_polls += 1
+        # Keep one last-good value for a single bad poll, then fall back to unavailable.
+        if self._consecutive_bad_load_polls == 1 and self._last_good_load_w is not None:
+            self.data["load"] = self._last_good_load_w
+
+    def _solar_api_warning_issue_id(self) -> str | None:
+        if self._config_entry is None:
+            return None
+        return f"{SOLAR_API_LOW_FIRMWARE_ISSUE_ID_PREFIX}{self._config_entry.entry_id}"
+
+    def _parse_firmware_version(self, version_text: Any) -> tuple[int, int, int, int] | None:
+        if not isinstance(version_text, str):
+            return None
+
+        match = _SOLAR_API_FIRMWARE_RE.fullmatch(version_text.strip())
+        if match is None:
+            return None
+
+        major, minor, patch, build = match.groups(default="0")
+        return (int(major), int(minor), int(patch), int(build))
+
+    def _solar_api_warning_needed(self) -> bool:
+        if not self.web_api_configured:
+            return False
+
+        firmware_version = self._parse_firmware_version(self._client.data.get("i_sw_version"))
+        if firmware_version is None:
+            return False
+
+        solar_api_enabled = self._client.data.get("api_solar_api_enabled")
+        if solar_api_enabled is not True:
+            return False
+
+        return firmware_version < _SOLAR_API_MINIMUM_VERSION
+
+    async def _async_sync_solar_api_warning(self) -> None:
+        issue_id = self._solar_api_warning_issue_id()
+        if issue_id is None:
+            return
+
+        if not self._solar_api_warning_needed():
+            ir.async_delete_issue(self._hass, DOMAIN, issue_id)
+            return
+
+        current_version = self._client.data.get("i_sw_version")
+        ir.async_create_issue(
+            self._hass,
+            DOMAIN,
+            issue_id,
+            is_fixable=True,
+            is_persistent=True,
+            severity=ir.IssueSeverity.WARNING,
+            translation_key=_SOLAR_API_WARNING_TRANSLATION_KEY,
+            translation_placeholders={
+                "entry_title": self._config_entry.title if self._config_entry is not None else self._name,
+                "current_version": str(current_version),
+                "minimum_version": _SOLAR_API_MINIMUM_VERSION_TEXT,
+            },
+            data={
+                "entry_id": self._config_entry.entry_id,
+                "current_version": str(current_version),
+                "minimum_version": _SOLAR_API_MINIMUM_VERSION_TEXT,
+            },
+        )
+
     async def init_data(
         self,
         config_entry: ConfigEntry | None = None,
@@ -193,6 +319,7 @@ class Hub:
             if enabled:
                 await asyncio.sleep(1.0)
         meter_phase_counts: dict[int, int] = {}
+        meter_locations: dict[int, int] = {}
         if self.web_api_configured:
             meter_info = await self._async_web_job(
                 self._webclient.get_power_meter_info,
@@ -221,11 +348,27 @@ class Hub:
                         if unit_id <= 0 or phase_count <= 0:
                             continue
                         meter_phase_counts[unit_id] = phase_count
+                locations_by_unit_id = meter_info.get("locations_by_unit_id")
+                if isinstance(locations_by_unit_id, dict):
+                    for raw_unit_id, raw_location in locations_by_unit_id.items():
+                        if (
+                            not self._client.is_numeric(raw_unit_id)
+                            or not self._client.is_numeric(raw_location)
+                        ):
+                            continue
+                        unit_id = int(raw_unit_id)
+                        location = int(raw_location)
+                        if unit_id <= 0 or location < 0:
+                            continue
+                        meter_locations[unit_id] = location
         await self._client.init_data()
         for unit_id in self._client._meter_unit_ids:
             phase_count = meter_phase_counts.get(unit_id)
             if phase_count is not None:
                 self.data[f"{self._meter_prefix(unit_id)}phase_count"] = phase_count
+            location = meter_locations.get(unit_id)
+            if location is not None:
+                self.data[f"{self._meter_prefix(unit_id)}location"] = location
         if self._client.meter_configured and self._client.primary_meter_unit_id not in self._client._meter_unit_ids:
             _LOGGER.warning(
                 "Configured meter unit ids %s do not include the primary meter unit id %s; Load and Grid status will stay unavailable",
@@ -243,6 +386,7 @@ class Hub:
                         model=storage_info.get("model"),
                         serial=storage_info.get("serial"),
                     )
+                    self.data["storage_temperature"] = storage_info.get("cell_temperature")
 
         if self.web_api_configured:
             await self.refresh_web_data()
@@ -264,6 +408,7 @@ class Hub:
         return await self._hass.async_add_executor_job(self._webclient.login)
 
     async def _async_refresh_optional_data(self) -> None:
+        self.data["load"] = None
         await self._async_optional_poll("inverter status", self._client.read_inverter_status_data)
         await self._async_optional_poll("inverter settings", self._client.read_inverter_model_settings_data)
         await self._async_optional_poll("inverter controls", self._client.read_inverter_controls_data)
@@ -284,10 +429,12 @@ class Hub:
         if self._client.mppt_configured:
             await self._async_optional_poll("mppt", self._client.read_mppt_data)
 
-        await self._async_optional_poll("ac limit", self._client.read_export_limit_data)
+        await self._async_optional_poll("ac limit", self._client.read_ac_limit_data)
 
         if self._client.storage_configured:
             await self._async_optional_poll("storage", self._client.read_inverter_storage_data)
+
+        self._apply_modbus_load_data()
 
         if self.web_api_configured:
             try:
@@ -394,6 +541,7 @@ class Hub:
         self._webclient = None
         self._clear_web_api_data()
         await async_get_token_store(self._hass).async_delete_token(self._host, API_USERNAME)
+        await self._async_sync_solar_api_warning()
 
         if self._config_entry is not None:
             ir.async_create_issue(
@@ -463,20 +611,124 @@ class Hub:
         self.data['api_modbus_restriction'] = self._enabled_state(restriction.get('on'))
         self.data['api_modbus_restriction_ip'] = restriction.get('ip')
 
+    def _apply_modbus_load_data(self) -> None:
+        self.data["load"] = None
+        if not self._client.meter_configured:
+            self._reset_bad_load_tracking()
+            return
+
+        primary_unit_id = self._client.primary_meter_unit_id
+        meter_prefix = self._meter_prefix(primary_unit_id)
+        meter_location = self._as_int(self.data.get(f"{meter_prefix}location"))
+        meter_power = self.data.get(f"{meter_prefix}power")
+        inverter_power = self.data.get("acpower")
+        inverter_sample_ts, meter_sample_ts = self._client.get_load_sample_timestamps(primary_unit_id)
+        if meter_sample_ts is None or meter_power is None or not self._client.is_numeric(meter_power):
+            self._reset_bad_load_tracking()
+            return
+        meter_power_f = float(meter_power)
+
+        if meter_location == 1 or (
+            meter_location is not None and 256 <= meter_location <= 511
+        ):
+            self._set_load(-meter_power_f, cache=meter_power_f <= 0)
+            return
+
+        if meter_location != 0:
+            self._reset_bad_load_tracking()
+            return
+
+        if (
+            inverter_sample_ts is None
+            or inverter_power is None
+            or not self._client.is_numeric(inverter_power)
+            or abs(inverter_sample_ts - meter_sample_ts) > LOAD_MAX_SAMPLE_SKEW_SECONDS
+        ):
+            # Do not mix inverter and meter values from different poll moments.
+            self._reset_bad_load_tracking()
+            return
+        inverter_power_f = float(inverter_power)
+
+        candidate_load = meter_power_f + inverter_power_f
+        if self._is_inverter_power_glitch(
+            candidate_load=candidate_load,
+            meter_power=meter_power_f,
+            inverter_power=inverter_power_f,
+        ):
+            self._apply_glitch_load_fallback()
+            return
+
+        storage_charge_power = self.data.get("storage_charge_power")
+        if (
+            candidate_load < 0
+            and self.storage_configured
+            and self._client.is_numeric(storage_charge_power)
+            and float(storage_charge_power) >= LOAD_STORAGE_CHARGE_MIN_W
+        ):
+            # Battery charging can make the simple formula lie; prefer unavailable over bogus 0 W.
+            self._reset_bad_load_tracking()
+            return
+
+        self._set_load(max(candidate_load, 0.0), cache=True, inverter_power=inverter_power_f)
+
     async def refresh_web_data(self) -> None:
         if not self._webclient:
             return
 
+        inverter_info = await self._async_web_job(self._webclient.get_inverter_info)
+        if isinstance(inverter_info, dict):
+            self.data["inverter_temperature"] = inverter_info.get("temperature")
+        else:
+            self.data["inverter_temperature"] = None
+
         modbus_config = await self._async_web_job(self._webclient.get_modbus_config)
-        if not isinstance(modbus_config, dict):
-            return
-        self._apply_web_modbus_config(modbus_config)
+        if isinstance(modbus_config, dict):
+            self._apply_web_modbus_config(modbus_config)
+
+        solar_api_config = await self._async_web_job(self._webclient.get_solar_api_config)
+        if isinstance(solar_api_config, dict):
+            enabled = solar_api_config.get("SolarAPIv1Enabled")
+            self.data["api_solar_api_enabled"] = (
+                self._enabled_bool(enabled) if enabled is not None else None
+            )
+        else:
+            self.data["api_solar_api_enabled"] = None
 
         if self.storage_configured:
+            storage_info = await self._async_web_job(self._webclient.get_storage_info)
+            if isinstance(storage_info, dict):
+                self.data["storage_temperature"] = storage_info.get("cell_temperature")
+            else:
+                self.data["storage_temperature"] = None
+
             battery_config = await self._async_web_job(self._webclient.get_battery_config)
-            if not isinstance(battery_config, dict):
-                return
-            self._apply_web_battery_config(battery_config)
+            if isinstance(battery_config, dict):
+                self._apply_web_battery_config(battery_config)
+
+        await self._async_sync_solar_api_warning()
+
+    @toggle_busy
+    async def set_solar_api_enabled(self, enabled: bool) -> None:
+        if not self._webclient:
+            return
+
+        await self._async_web_job(
+            self._webclient.set_solar_api_enabled,
+            enabled,
+            raise_on_auth_failure=True,
+        )
+        self.data["api_solar_api_enabled"] = bool(enabled)
+        await self._async_sync_solar_api_warning()
+
+    @toggle_busy
+    async def reset_modbus_control(self) -> None:
+        if not self._webclient:
+            return
+
+        await self._async_web_job(
+            self._webclient.reset_modbus_control,
+            raise_on_auth_failure=True,
+        )
 
     def _get_next_soc_limits(
         self,

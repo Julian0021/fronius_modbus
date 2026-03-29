@@ -11,11 +11,12 @@ from homeassistant.components.select import (
 )
 
 from .hub import Hub
-from .base import FroniusModbusBaseEntity
+from .base import FroniusModbusBaseEntity, async_ensure_translation_cache
 
 _LOGGER = logging.getLogger(__name__)
 
 async def async_setup_entry(hass, config_entry, async_add_entities) -> None:
+    await async_ensure_translation_cache(hass)
     hub: Hub = config_entry.runtime_data
     coordinator = hub.coordinator
 
@@ -29,6 +30,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities) -> None:
                 name=select_info[0],
                 key=select_info[1],
                 options=select_info[2],
+                translation_key=select_info[0],
                 hub=hub,  # Pass hub for control methods
             )
             entities.append(select)
@@ -41,6 +43,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities) -> None:
                     name=select_info[0],
                     key=select_info[1],
                     options=select_info[2],
+                    translation_key=select_info[0],
                     hub=hub,
                 )
                 entities.append(select)
@@ -53,6 +56,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities) -> None:
             name=select_info[0],
             key=select_info[1],
             options=select_info[2],
+            translation_key=select_info[0],
             hub=hub,  # Pass hub for control methods
         )
         entities.append(select)
@@ -68,14 +72,16 @@ def get_key(my_dict, search):
 
 class FroniusModbusSelect(FroniusModbusBaseEntity, SelectEntity):
     """Representation of an Battery Storage select."""
+    _translation_platform = "select"
 
-    def __init__(self, coordinator, device_info, name, key, options, hub):
+    def __init__(self, coordinator, device_info, name, key, options, hub, translation_key=None):
         """Initialize the select entity."""
         super().__init__(
             coordinator=coordinator,
             device_info=device_info,
             name=name,
             key=key,
+            translation_key=translation_key,
             options=options,
         )
         self._hub = hub  # Store hub reference for control methods

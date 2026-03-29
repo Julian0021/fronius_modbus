@@ -24,7 +24,7 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS = [Platform.SELECT, Platform.SWITCH, Platform.NUMBER, Platform.SENSOR]
+PLATFORMS = [Platform.SELECT, Platform.SWITCH, Platform.NUMBER, Platform.SENSOR, Platform.BUTTON]
 
 type HubConfigEntry = ConfigEntry[hub.Hub]
 
@@ -56,7 +56,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: HubConfigEntry) -> bool:
 
     _LOGGER.debug("Setup %s.%s", DOMAIN, name)
 
-    await migrations.async_remove_legacy_entities(hass, entry)
     api_token = await migrations.async_prepare_entry_token(hass, entry, host)
     await migrations.async_sync_reconfigure_issue(hass, entry, has_token=api_token is not None)
 
@@ -75,12 +74,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: HubConfigEntry) -> bool:
     )
 
     await entry.runtime_data.init_data(config_entry=entry)
-    await migrations.async_remove_unused_mppt_entities(hass, entry, entry.runtime_data)
-    await migrations.async_remove_unsupported_single_phase_meter_entities(
-        hass,
-        entry,
-        entry.runtime_data,
-    )
+    await migrations.async_migrate_v019_mppt_statistics(hass, entry, entry.runtime_data)
+    await migrations.async_remove_unexpected_entities(hass, entry, entry.runtime_data)
+    await migrations.async_remove_legacy_devices(hass, entry)
     await migrations.async_sync_reconfigure_issue(
         hass,
         entry,
@@ -89,7 +85,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: HubConfigEntry) -> bool:
 
     entry.async_on_unload(entry.add_update_listener(_async_reload_entry))
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-    await migrations.async_repair_soc_minimum_entity_id(hass, entry, entry.runtime_data)
     return True
 
 

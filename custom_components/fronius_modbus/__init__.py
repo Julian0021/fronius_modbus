@@ -8,14 +8,15 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, CONF_NAME, CONF_PORT, CONF_SCAN_INTERVAL, Platform
 from homeassistant.core import HomeAssistant
 
-from . import hub, migrations
+from . import entry_reconfigure, hub, migrations, registry_maintenance
+from .config_data import entry_value
 from .const import (
     API_USERNAME,
     CONF_INVERTER_UNIT_ID,
     CONF_RESTRICT_MODBUS_TO_THIS_IP,
     DEFAULT_INVERTER_UNIT_ID,
-    DEFAULT_NAME,
     DEFAULT_METER_UNIT_IDS,
+    DEFAULT_NAME,
     DEFAULT_PORT,
     DEFAULT_RESTRICT_MODBUS_TO_THIS_IP,
     DEFAULT_SCAN_INTERVAL,
@@ -26,11 +27,7 @@ _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS = [Platform.SELECT, Platform.SWITCH, Platform.NUMBER, Platform.SENSOR, Platform.BUTTON]
 
-type HubConfigEntry = ConfigEntry[hub.Hub]
-
-
-def _entry_value(entry: ConfigEntry, key: str, default=None):
-    return entry.options.get(key, entry.data.get(key, default))
+HubConfigEntry = ConfigEntry[hub.Hub]
 
 async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Migrate old config entries."""
@@ -43,12 +40,12 @@ async def _async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
 
 async def async_setup_entry(hass: HomeAssistant, entry: HubConfigEntry) -> bool:
     """Set up Fronius Modbus from a config entry."""
-    name = _entry_value(entry, CONF_NAME, DEFAULT_NAME)
-    host = _entry_value(entry, CONF_HOST)
-    port = _entry_value(entry, CONF_PORT, DEFAULT_PORT)
-    inverter_unit_id = _entry_value(entry, CONF_INVERTER_UNIT_ID, DEFAULT_INVERTER_UNIT_ID)
-    scan_interval = _entry_value(entry, CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
-    restrict_modbus_to_this_ip = _entry_value(
+    name = entry_value(entry, CONF_NAME, DEFAULT_NAME)
+    host = entry_value(entry, CONF_HOST)
+    port = entry_value(entry, CONF_PORT, DEFAULT_PORT)
+    inverter_unit_id = entry_value(entry, CONF_INVERTER_UNIT_ID, DEFAULT_INVERTER_UNIT_ID)
+    scan_interval = entry_value(entry, CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
+    restrict_modbus_to_this_ip = entry_value(
         entry,
         CONF_RESTRICT_MODBUS_TO_THIS_IP,
         DEFAULT_RESTRICT_MODBUS_TO_THIS_IP,
@@ -56,10 +53,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: HubConfigEntry) -> bool:
 
     _LOGGER.debug("Setup %s.%s", DOMAIN, name)
 
-    api_token = await migrations.async_prepare_entry_token(hass, entry, host)
-    await migrations.async_sync_reconfigure_issue(hass, entry, has_token=api_token is not None)
+    api_token = await entry_reconfigure.async_prepare_entry_token(hass, entry, host)
+    await entry_reconfigure.async_sync_reconfigure_issue(
+        hass,
+        entry,
+        has_token=api_token is not None,
+    )
 
-    entry.runtime_data = hub.Hub(
+    runtime_data = hub.Hub(
         hass=hass,
         name=name,
         host=host,
@@ -73,18 +74,33 @@ async def async_setup_entry(hass: HomeAssistant, entry: HubConfigEntry) -> bool:
         restrict_modbus_to_this_ip=restrict_modbus_to_this_ip,
     )
 
-    await entry.runtime_data.init_data(config_entry=entry)
-    await migrations.async_migrate_v019_mppt_statistics(hass, entry, entry.runtime_data)
-    await migrations.async_remove_unexpected_entities(hass, entry, entry.runtime_data)
-    await migrations.async_remove_legacy_devices(hass, entry)
-    await migrations.async_sync_reconfigure_issue(
-        hass,
-        entry,
-        has_token=entry.runtime_data.web_api_configured,
-    )
+    try:
+        await runtime_data.bootstrap_service.init_data(config_entry=entry)
+        await registry_maintenance.async_migrate_v019_mppt_statistics(
+            hass,
+            entry,
+            runtime_data,
+        )
+        await registry_maintenance.async_remove_unexpected_entities(
+            hass,
+            entry,
+            runtime_data,
+        )
+        await registry_maintenance.async_remove_legacy_devices(hass, entry)
+        await entry_reconfigure.async_sync_reconfigure_issue(
+            hass,
+            entry,
+            has_token=runtime_data.web_api_configured,
+        )
 
-    entry.async_on_unload(entry.add_update_listener(_async_reload_entry))
-    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+        entry.runtime_data = runtime_data
+        await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+        entry.async_on_unload(entry.add_update_listener(_async_reload_entry))
+    except Exception:
+        if getattr(entry, "runtime_data", None) is runtime_data:
+            delattr(entry, "runtime_data")
+        runtime_data.close()
+        raise
     return True
 
 

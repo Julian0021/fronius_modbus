@@ -536,6 +536,7 @@
         "error": {
           "cannot_connect": "Verbindung zum Wechselrichter fehlgeschlagen.",
           "invalid_api_credentials": "Kundenanmeldung fehlgeschlagen.",
+          "cannot_confirm_disable": "Es konnte nicht bestätigt werden, dass die Solar API deaktiviert wurde.",
           "unknown": "Unbekannter Fehler"
         },
         "abort": {

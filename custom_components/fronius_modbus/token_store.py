@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from typing import Any
 from urllib.parse import urlparse
 
 from homeassistant.core import HomeAssistant
@@ -14,23 +13,28 @@ _TOKEN_STORE_DATA_KEY = "web_api_token_store"
 
 
 def _token_key(host: str, user: str = API_USERNAME) -> str:
+    """Build the stable storage key for one host/user token pair."""
     if "://" not in host:
         host = f"http://{host}"
     return f"{urlparse(host).netloc.lower()}:{user}"
 
 
 class FroniusTokenStore:
+    """Cache and persist Fronius Web API tokens by host and API username."""
+
     def __init__(self, hass: HomeAssistant) -> None:
         self._store = Store[dict[str, dict[str, str]]](hass, _TOKEN_STORE_VERSION, _TOKEN_STORE_KEY)
         self._cache: dict[str, dict[str, str]] | None = None
 
     async def _async_load_all(self) -> dict[str, dict[str, str]]:
+        """Load and cache the full token map once per Home Assistant process."""
         if self._cache is None:
             loaded = await self._store.async_load()
             self._cache = loaded if isinstance(loaded, dict) else {}
         return self._cache
 
     async def async_load_token(self, host: str, user: str = API_USERNAME) -> dict[str, str] | None:
+        """Return the stored token metadata for a host/user pair if it exists."""
         data = await self._async_load_all()
         token = data.get(_token_key(host, user))
         if not isinstance(token, dict):
@@ -42,6 +46,7 @@ class FroniusTokenStore:
         return {"realm": realm, "token": secret}
 
     async def async_has_token(self, host: str, user: str = API_USERNAME) -> bool:
+        """Return whether a usable token exists for the given host/user pair."""
         return await self.async_load_token(host, user) is not None
 
     async def async_save_token(
@@ -51,17 +56,20 @@ class FroniusTokenStore:
         token: str,
         user: str = API_USERNAME,
     ) -> None:
+        """Persist a token for one host/user pair and keep the cache in sync."""
         data = await self._async_load_all()
         data[_token_key(host, user)] = {"realm": realm, "token": token}
         await self._store.async_save(data)
 
     async def async_delete_token(self, host: str, user: str = API_USERNAME) -> None:
+        """Delete the stored token for a host/user pair if one was saved."""
         data = await self._async_load_all()
         if data.pop(_token_key(host, user), None) is not None:
             await self._store.async_save(data)
 
 
 def async_get_token_store(hass: HomeAssistant) -> FroniusTokenStore:
+    """Return the per-Hass token-store singleton used by the integration."""
     domain_data = hass.data.setdefault(DOMAIN, {})
     token_store = domain_data.get(_TOKEN_STORE_DATA_KEY)
     if token_store is None:

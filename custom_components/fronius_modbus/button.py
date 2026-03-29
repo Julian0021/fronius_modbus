@@ -1,47 +1,62 @@
+from __future__ import annotations
+
 from homeassistant.components.button import ButtonEntity
 
-from .base import FroniusModbusBaseEntity, async_ensure_translation_cache
+from .base import FroniusModbusBaseEntity
 from .const import INVERTER_API_BUTTON_TYPES
-from .hub import Hub
+from .platform_setup import (
+    async_platform_context,
+    descriptor_is_available,
+    dispatch_service_action,
+    entity_description_kwargs,
+    extend_entities,
+)
 
 
 async def async_setup_entry(hass, config_entry, async_add_entities) -> None:
-    await async_ensure_translation_cache(hass)
-    hub: Hub = config_entry.runtime_data
-    coordinator = hub.coordinator
+    hub, coordinator = await async_platform_context(hass, config_entry)
 
     entities = []
-    if hub.web_api_configured:
-        for button_info in INVERTER_API_BUTTON_TYPES:
-            name, key, icon = button_info[:3]
-            entity_category = button_info[3] if len(button_info) > 3 else None
-            entities.append(
-                FroniusModbusButton(
-                    coordinator=coordinator,
-                    device_info=hub.device_info_inverter,
-                    name=name,
-                    key=key,
-                    icon=icon,
-                    entity_category=entity_category,
-                    translation_key=name,
-                    hub=hub,
-                )
-            )
+    extend_entities(
+        entities,
+        INVERTER_API_BUTTON_TYPES,
+        lambda description: FroniusModbusButton(
+            hub=hub,
+            **entity_description_kwargs(
+                coordinator=coordinator,
+                device_info=hub.device_info_inverter,
+                description=description,
+            ),
+        ),
+        include=hub.web_api_configured,
+    )
 
     async_add_entities(entities)
-    return True
 
 
 class FroniusModbusButton(FroniusModbusBaseEntity, ButtonEntity):
     """Representation of a Fronius Web API button."""
+
     _translation_platform = "button"
 
-    def __init__(self, coordinator, device_info, name, key, icon, hub, entity_category=None, translation_key=None):
+    def __init__(
+        self,
+        coordinator,
+        device_info,
+        name,
+        key,
+        icon,
+        hub,
+        description=None,
+        entity_category=None,
+        translation_key=None,
+    ):
         super().__init__(
             coordinator=coordinator,
             device_info=device_info,
             name=name,
             key=key,
+            description=description,
             icon=icon,
             entity_category=entity_category,
             translation_key=translation_key,
@@ -49,9 +64,16 @@ class FroniusModbusButton(FroniusModbusBaseEntity, ButtonEntity):
         self._hub = hub
 
     async def async_press(self) -> None:
-        if self._key == "reset_modbus_control":
-            await self._hub.reset_modbus_control()
+        await dispatch_service_action(
+            self._hub,
+            self._description.action_service,
+            self._description.action,
+        )
 
     @property
     def available(self) -> bool:
-        return super().available and self._hub.web_api_configured
+        return super().available and descriptor_is_available(
+            self._hub,
+            self.coordinator,
+            self._description,
+        )

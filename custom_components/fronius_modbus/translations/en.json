@@ -536,6 +536,7 @@
         "error": {
           "cannot_connect": "Failed to connect to the inverter.",
           "invalid_api_credentials": "Customer login failed.",
+          "cannot_confirm_disable": "Could not confirm that Solar API was disabled.",
           "unknown": "Unknown error"
         },
         "abort": {

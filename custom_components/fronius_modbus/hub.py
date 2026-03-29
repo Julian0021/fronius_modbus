@@ -1,4 +1,4 @@
-"""Fronius Modbus Hub."""
+"""Fronius Modbus hub state container and coordinator."""
 from __future__ import annotations
 
 import asyncio
@@ -7,73 +7,41 @@ import re
 import time
 from datetime import timedelta
 from typing import Any
-from importlib.metadata import version
+
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import issue_registry as ir
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
-from packaging import version as pkg_version
-
-from .froniusmodbusclient import FroniusModbusClient
-from .froniuswebclient import FroniusWebAuthError, FroniusWebClient
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .const import (
     API_BATTERY_MODE,
     API_SOC_MODE,
     DOMAIN,
     ENTITY_PREFIX,
-    API_USERNAME,
     SOLAR_API_LOW_FIRMWARE_ISSUE_ID_PREFIX,
-    MIGRATION_RECONFIGURE_ISSUE_ID_PREFIX,
 )
-from .token_store import async_get_token_store
+from .froniusmodbusclient import FroniusModbusClient
+from .froniuswebclient import FroniusWebClient
+from .hub_bootstrap import HubBootstrapService
+from .hub_commands import HubCommandService, derive_api_battery_mode, toggle_busy
+from .hub_runtime import HubRuntimeService
+from .hub_warnings import HubWarningService
+from .hub_web_api import HubWebApiService
+from .runtime_state import FroniusRuntimeState, StateSection
+from .value_normalization import enabled_state, is_enabled
 
 _LOGGER = logging.getLogger(__name__)
-_SOLAR_API_WARNING_TRANSLATION_KEY = "solar_api_low_firmware"
-_SOLAR_API_MINIMUM_VERSION = (1, 40, 7, 1)
-_SOLAR_API_MINIMUM_VERSION_TEXT = "1.40.7-1"
 _SOLAR_API_FIRMWARE_RE = re.compile(r"^(\d+)\.(\d+)\.(\d+)(?:-(\d+))?$")
-
-WEB_API_DATA_KEYS = (
-    "inverter_temperature",
-    "api_modbus_mode",
-    "api_modbus_control",
-    "api_modbus_sunspec_mode",
-    "api_modbus_restriction",
-    "api_modbus_restriction_ip",
-    "api_solar_api_enabled",
-    "storage_temperature",
-    "api_battery_mode_raw",
-    "api_battery_mode_effective_raw",
-    "api_battery_mode_consistent",
-    "api_battery_mode",
-    "api_battery_power",
-    "api_soc_mode_raw",
-    "api_soc_mode",
-    "api_soc_min",
-    "soc_maximum",
-    "api_backup_reserved",
-    "api_charge_from_ac",
-    "api_charge_from_grid",
-)
-
-BATTERY_WRITE_MODBUS_RECOVERY_SECONDS = 30.0
-BATTERY_WRITE_WEB_REFRESH_DELAY_SECONDS = 10.0
-# Load is derived from separate inverter/meter polls, so keep a small skew guard.
-LOAD_MAX_SAMPLE_SKEW_SECONDS = 0.5
-# Fronius occasionally drops inverter AC power to ~0 for one poll while PV is clearly active.
-LOAD_GLITCH_MIN_EXPORT_W = 1000.0
-LOAD_GLITCH_MAX_ABS_INVERTER_W = 50.0
-LOAD_GLITCH_MIN_PV_W = 1000.0
-# During strong battery charging on Verto, meter export can exceed inverter AC power and
-# the simple grid-meter formula produces bogus negative/zero load values.
-LOAD_STORAGE_CHARGE_MIN_W = 1000.0
 
 
 class FroniusCoordinator(DataUpdateCoordinator):
     """Coordinator for Fronius Modbus data updates."""
 
-    def __init__(self, hass: HomeAssistant, hub: Hub, config_entry: ConfigEntry | None = None) -> None:
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        hub: Hub,
+        config_entry: ConfigEntry | None = None,
+    ) -> None:
         """Initialize the coordinator."""
         if config_entry is not None:
             try:
@@ -101,31 +69,12 @@ class FroniusCoordinator(DataUpdateCoordinator):
         self.hub = hub
 
     async def _async_update_data(self) -> dict:
-        """Fetch all data from Fronius device."""
-        core_err: Exception | None = None
-        self.hub.data["load"] = None
-        self.hub._client.start_load_poll_cycle()
-        try:
-            core_ok = await self.hub._client.read_inverter_data()
-            if not core_ok:
-                core_err = RuntimeError("Core inverter read returned no data")
-        except Exception as err:
-            core_err = err
-
-        if core_err is not None:
-            if self.hub._handle_core_modbus_failure(core_err):
-                return self.hub.data
-            raise UpdateFailed(f"Fronius data update failed: {core_err}")
-
-        self.hub._handle_core_modbus_success()
-        await self.hub._async_refresh_optional_data()
-        return self.hub.data
+        """Fetch all data from the Fronius device."""
+        return await self.hub.runtime_service.async_refresh_data()
 
 
 class Hub:
-    """Hub for Fronius Battery Storage Modbus Interface"""
-
-    PYMODBUS_VERSION = '3.11.2'
+    """Shared runtime state and service access for the Fronius integration."""
 
     def __init__(
         self,
@@ -142,23 +91,27 @@ class Hub:
         auto_enable_modbus: bool = True,
         restrict_modbus_to_this_ip: bool = False,
     ) -> None:
-        """Init hub."""
+        """Initialize the hub state container and internal services."""
         self._hass = hass
         self._name = name
         self._host = host
         self._port = port
         self._inverter_unit_id = inverter_unit_id
-        self._meter_unit_ids = list(meter_unit_ids)
-        self._entity_prefix = f'{ENTITY_PREFIX}_{name.lower()}_'
+        self._entity_prefix = f"{ENTITY_PREFIX}_{name.lower()}_"
         self._config_entry: ConfigEntry | None = None
         self._auto_enable_modbus = auto_enable_modbus
         self._restrict_modbus_to_this_ip = restrict_modbus_to_this_ip
         self._webclient: FroniusWebClient | None = None
 
-        self._id = f'{name.lower()}_{host.lower().replace('.','')}'
-        self.online = True
+        self._id = f"{name.lower()}_{host.lower().replace('.', '')}"
 
-        self._client = FroniusModbusClient(host=host, port=port, inverter_unit_id=inverter_unit_id, meter_unit_ids=meter_unit_ids, timeout=max(3, (scan_interval - 1)))
+        self._client = FroniusModbusClient(
+            host=host,
+            port=port,
+            inverter_unit_id=inverter_unit_id,
+            meter_unit_ids=meter_unit_ids,
+            timeout=max(3, scan_interval - 1),
+        )
         if api_username and (api_password or api_token):
             self._webclient = FroniusWebClient(
                 host=host,
@@ -166,9 +119,10 @@ class Hub:
                 password=api_password or "",
                 token=api_token,
             )
+
         self._scan_interval = timedelta(seconds=scan_interval)
         self.coordinator = None
-        self._busy = False
+        self._command_lock = asyncio.Lock()
         self._battery_write_transition_until = 0.0
         self._battery_write_transition_warned = False
         self._delayed_web_refresh_task: asyncio.Task | None = None
@@ -176,22 +130,16 @@ class Hub:
         self._last_good_inverter_power_w: float | None = None
         self._consecutive_bad_load_polls = 0
 
+        self._runtime_service = HubRuntimeService(self)
+        self._bootstrap_service = HubBootstrapService(self)
+        self._warning_service = HubWarningService(self)
+        self._web_api_service = HubWebApiService(self)
+        self._command_service = HubCommandService(self)
+
+    @staticmethod
     def toggle_busy(func):
-        async def wrapper(self, *args, **kwargs):
-            if self._busy:
-                return
-            self._busy = True
-            error = None
-            try:
-                result = await func(self, *args, **kwargs)
-            except Exception as e:
-                _LOGGER.warning(f'Exception in wrapper {e}')
-                error = e
-            self._busy = False
-            if not error is None:
-                raise error
-            return result
-        return wrapper
+        """Backward-compatible decorator alias for serialized hub writes."""
+        return toggle_busy(func)
 
     def _meter_prefix(self, unit_id: int) -> str:
         return f"meter_{int(unit_id)}_"
@@ -207,7 +155,7 @@ class Hub:
         inverter_power: float | None = None,
     ) -> None:
         load_value = round(float(load_w), 2)
-        self.data["load"] = load_value
+        self.derived_state.set("load", load_value)
         if cache:
             self._last_good_load_w = load_value
             if inverter_power is not None:
@@ -221,30 +169,34 @@ class Hub:
         meter_power: float,
         inverter_power: float,
     ) -> bool:
-        pv_power = self.data.get("pv_power")
-        pv_active = self._client.is_numeric(pv_power) and float(pv_power) >= LOAD_GLITCH_MIN_PV_W
+        pv_power = self.mppt_state.get("pv_power")
+        pv_active = (
+            self._client.is_numeric(pv_power) and float(pv_power) >= 1000.0
+        )
         previous_inverter_active = self._last_good_inverter_power_w is not None and (
-            self._last_good_inverter_power_w >= LOAD_GLITCH_MIN_PV_W
+            self._last_good_inverter_power_w >= 1000.0
         )
         return (
             candidate_load < 0
-            and meter_power <= -LOAD_GLITCH_MIN_EXPORT_W
-            and abs(inverter_power) <= LOAD_GLITCH_MAX_ABS_INVERTER_W
+            and meter_power <= -1000.0
+            and abs(inverter_power) <= 50.0
             and (pv_active or previous_inverter_active)
         )
 
     def _apply_glitch_load_fallback(self) -> None:
         self._consecutive_bad_load_polls += 1
-        # Keep one last-good value for a single bad poll, then fall back to unavailable.
         if self._consecutive_bad_load_polls == 1 and self._last_good_load_w is not None:
-            self.data["load"] = self._last_good_load_w
+            self.derived_state.set("load", self._last_good_load_w)
 
     def _solar_api_warning_issue_id(self) -> str | None:
         if self._config_entry is None:
             return None
         return f"{SOLAR_API_LOW_FIRMWARE_ISSUE_ID_PREFIX}{self._config_entry.entry_id}"
 
-    def _parse_firmware_version(self, version_text: Any) -> tuple[int, int, int, int] | None:
+    def _parse_firmware_version(
+        self,
+        version_text: Any,
+    ) -> tuple[int, int, int, int] | None:
         if not isinstance(version_text, str):
             return None
 
@@ -255,209 +207,6 @@ class Hub:
         major, minor, patch, build = match.groups(default="0")
         return (int(major), int(minor), int(patch), int(build))
 
-    def _solar_api_warning_needed(self) -> bool:
-        if not self.web_api_configured:
-            return False
-
-        firmware_version = self._parse_firmware_version(self._client.data.get("i_sw_version"))
-        if firmware_version is None:
-            return False
-
-        solar_api_enabled = self._client.data.get("api_solar_api_enabled")
-        if solar_api_enabled is not True:
-            return False
-
-        return firmware_version < _SOLAR_API_MINIMUM_VERSION
-
-    async def _async_sync_solar_api_warning(self) -> None:
-        issue_id = self._solar_api_warning_issue_id()
-        if issue_id is None:
-            return
-
-        if not self._solar_api_warning_needed():
-            ir.async_delete_issue(self._hass, DOMAIN, issue_id)
-            return
-
-        current_version = self._client.data.get("i_sw_version")
-        ir.async_create_issue(
-            self._hass,
-            DOMAIN,
-            issue_id,
-            is_fixable=True,
-            is_persistent=True,
-            severity=ir.IssueSeverity.WARNING,
-            translation_key=_SOLAR_API_WARNING_TRANSLATION_KEY,
-            translation_placeholders={
-                "entry_title": self._config_entry.title if self._config_entry is not None else self._name,
-                "current_version": str(current_version),
-                "minimum_version": _SOLAR_API_MINIMUM_VERSION_TEXT,
-            },
-            data={
-                "entry_id": self._config_entry.entry_id,
-                "current_version": str(current_version),
-                "minimum_version": _SOLAR_API_MINIMUM_VERSION_TEXT,
-            },
-        )
-
-    async def init_data(
-        self,
-        config_entry: ConfigEntry | None = None,
-        setup_coordinator: bool = True,
-        apply_modbus_config: bool = False,
-    ):
-        """Initialize data and coordinator."""
-        self._config_entry = config_entry
-        await self._hass.async_add_executor_job(self.check_pymodbus_version)
-        if apply_modbus_config and self.web_api_configured and self._auto_enable_modbus:
-            enabled = await self._async_web_job(
-                self._webclient.ensure_modbus_enabled,
-                self._port,
-                self._client.primary_meter_unit_id,
-                self._inverter_unit_id,
-                self._restrict_modbus_to_this_ip,
-            )
-            if enabled:
-                await asyncio.sleep(1.0)
-        meter_phase_counts: dict[int, int] = {}
-        meter_locations: dict[int, int] = {}
-        if self.web_api_configured:
-            meter_info = await self._async_web_job(
-                self._webclient.get_power_meter_info,
-                self._client.primary_meter_unit_id,
-            )
-            if meter_info is None:
-                _LOGGER.debug(
-                    "Keeping existing smart meter unit ids for %s because PowerMeter payload parsing failed",
-                    self._host,
-                )
-            elif isinstance(meter_info, dict):
-                self._client.set_meter_unit_ids(
-                    meter_info.get("unit_ids"),
-                    primary_unit_id=meter_info.get("primary_unit_id"),
-                )
-                phase_counts_by_unit_id = meter_info.get("phase_counts_by_unit_id")
-                if isinstance(phase_counts_by_unit_id, dict):
-                    for raw_unit_id, raw_phase_count in phase_counts_by_unit_id.items():
-                        if (
-                            not self._client.is_numeric(raw_unit_id)
-                            or not self._client.is_numeric(raw_phase_count)
-                        ):
-                            continue
-                        unit_id = int(raw_unit_id)
-                        phase_count = int(raw_phase_count)
-                        if unit_id <= 0 or phase_count <= 0:
-                            continue
-                        meter_phase_counts[unit_id] = phase_count
-                locations_by_unit_id = meter_info.get("locations_by_unit_id")
-                if isinstance(locations_by_unit_id, dict):
-                    for raw_unit_id, raw_location in locations_by_unit_id.items():
-                        if (
-                            not self._client.is_numeric(raw_unit_id)
-                            or not self._client.is_numeric(raw_location)
-                        ):
-                            continue
-                        unit_id = int(raw_unit_id)
-                        location = int(raw_location)
-                        if unit_id <= 0 or location < 0:
-                            continue
-                        meter_locations[unit_id] = location
-        await self._client.init_data()
-        for unit_id in self._client._meter_unit_ids:
-            phase_count = meter_phase_counts.get(unit_id)
-            if phase_count is not None:
-                self.data[f"{self._meter_prefix(unit_id)}phase_count"] = phase_count
-            location = meter_locations.get(unit_id)
-            if location is not None:
-                self.data[f"{self._meter_prefix(unit_id)}location"] = location
-        if self._client.meter_configured and self._client.primary_meter_unit_id not in self._client._meter_unit_ids:
-            _LOGGER.warning(
-                "Configured meter unit ids %s do not include the primary meter unit id %s; Load and Grid status will stay unavailable",
-                self._client._meter_unit_ids,
-                self._client.primary_meter_unit_id,
-            )
-
-        if self.storage_configured:
-            self._client.reset_storage_info()
-            if self.web_api_configured:
-                storage_info = await self._async_web_job(self._webclient.get_storage_info)
-                if isinstance(storage_info, dict):
-                    self._client.set_storage_info(
-                        manufacturer=storage_info.get("manufacturer"),
-                        model=storage_info.get("model"),
-                        serial=storage_info.get("serial"),
-                    )
-                    self.data["storage_temperature"] = storage_info.get("cell_temperature")
-
-        if self.web_api_configured:
-            await self.refresh_web_data()
-
-        if setup_coordinator:
-            # Initialize the coordinator. The config-entry first refresh API
-            # is only valid when a config entry is available.
-            self.coordinator = FroniusCoordinator(self._hass, self, config_entry=config_entry)
-            if config_entry is not None:
-                await self.coordinator.async_config_entry_first_refresh()
-            else:
-                await self.coordinator.async_refresh()
-
-        return
-
-    async def validate_web_api(self) -> bool:
-        if not self._webclient:
-            return False
-        return await self._hass.async_add_executor_job(self._webclient.login)
-
-    async def _async_refresh_optional_data(self) -> None:
-        self.data["load"] = None
-        await self._async_optional_poll("inverter status", self._client.read_inverter_status_data)
-        await self._async_optional_poll("inverter settings", self._client.read_inverter_model_settings_data)
-        await self._async_optional_poll("inverter controls", self._client.read_inverter_controls_data)
-
-        if self._client.meter_configured:
-            if self._client.primary_meter_unit_id not in self._client._meter_unit_ids:
-                self.data["load"] = None
-                self.data["grid_status"] = None
-
-            for meter_address in self._client._meter_unit_ids:
-                await self._async_optional_poll(
-                    f"meter {meter_address}",
-                    self._client.read_meter_data,
-                    unit_id=meter_address,
-                    is_primary=meter_address == self._client.primary_meter_unit_id,
-                )
-
-        if self._client.mppt_configured:
-            await self._async_optional_poll("mppt", self._client.read_mppt_data)
-
-        await self._async_optional_poll("ac limit", self._client.read_ac_limit_data)
-
-        if self._client.storage_configured:
-            await self._async_optional_poll("storage", self._client.read_inverter_storage_data)
-
-        self._apply_modbus_load_data()
-
-        if self.web_api_configured:
-            try:
-                await self.refresh_web_data()
-            except Exception as err:
-                _LOGGER.warning("Fronius web API refresh failed: %s", err)
-
-    async def _async_optional_poll(self, label: str, func, *args, **kwargs) -> bool:
-        try:
-            result = await func(*args, **kwargs)
-        except Exception as err:
-            _LOGGER.warning("Optional Fronius %s refresh failed: %s", label, err)
-            return False
-
-        if result is False:
-            _LOGGER.debug("Optional Fronius %s refresh returned no data", label)
-            return False
-        return True
-
-    def _clear_web_api_data(self) -> None:
-        for key in WEB_API_DATA_KEYS:
-            self.data[key] = None
-
     def _battery_write_transition_active(self) -> bool:
         return time.monotonic() < self._battery_write_transition_until
 
@@ -465,58 +214,12 @@ class Hub:
         self._battery_write_transition_until = 0.0
         self._battery_write_transition_warned = False
 
-    def _schedule_delayed_web_refresh(self) -> None:
-        if self._delayed_web_refresh_task and not self._delayed_web_refresh_task.done():
-            self._delayed_web_refresh_task.cancel()
-
-        async def delayed_refresh() -> None:
-            try:
-                await asyncio.sleep(BATTERY_WRITE_WEB_REFRESH_DELAY_SECONDS)
-                if self._webclient:
-                    await self.refresh_web_data()
-            except asyncio.CancelledError:
-                raise
-            except Exception as err:
-                _LOGGER.warning("Delayed Fronius web API refresh failed: %s", err)
-
-        self._delayed_web_refresh_task = self._hass.loop.create_task(delayed_refresh())
-
-    def _start_battery_write_transition(self, source: str) -> None:
-        self._battery_write_transition_until = (
-            time.monotonic() + BATTERY_WRITE_MODBUS_RECOVERY_SECONDS
-        )
-        self._battery_write_transition_warned = False
-        self._client.close()
-        self._schedule_delayed_web_refresh()
-        _LOGGER.debug(
-            "Started Modbus recovery window after %s write for %s",
-            source,
-            self._host,
-        )
-
-    def _handle_core_modbus_success(self) -> None:
-        if self._battery_write_transition_active():
-            _LOGGER.debug("Modbus recovered after battery API write on %s", self._host)
-        self._clear_battery_write_transition()
-
-    def _handle_core_modbus_failure(self, err: Exception) -> bool:
-        if not self._battery_write_transition_active():
-            return False
-
-        if not self._battery_write_transition_warned:
-            _LOGGER.warning(
-                "Suppressing temporary Modbus outage after battery API write on %s: %s",
-                self._host,
-                err,
-            )
-            self._battery_write_transition_warned = True
-        else:
-            _LOGGER.debug(
-                "Modbus still recovering after battery API write on %s: %s",
-                self._host,
-                err,
-            )
-        return True
+    def _derive_api_battery_mode(
+        self,
+        raw_mode: int | None,
+        raw_soc_mode: str | None,
+    ) -> int | None:
+        return derive_api_battery_mode(raw_mode, raw_soc_mode)
 
     def _set_effective_api_battery_mode(
         self,
@@ -524,315 +227,18 @@ class Hub:
         raw_soc_mode: str | None,
     ) -> None:
         effective_mode = self._derive_api_battery_mode(raw_mode, raw_soc_mode)
-        self.data['api_battery_mode_raw'] = raw_mode
-        self.data['api_battery_mode_effective_raw'] = effective_mode
-        self.data['api_battery_mode_consistent'] = effective_mode is not None
-        self.data['api_battery_mode'] = (
+        self.web_api_state.set("api_battery_mode_raw", raw_mode)
+        self.web_api_state.set("api_battery_mode_effective_raw", effective_mode)
+        self.web_api_state.set("api_battery_mode_consistent", effective_mode is not None)
+        self.web_api_state.set(
+            "api_battery_mode",
             API_BATTERY_MODE.get(effective_mode) if effective_mode is not None else None
         )
-        self.data['api_soc_mode_raw'] = raw_soc_mode
-        self.data['api_soc_mode'] = API_SOC_MODE.get(raw_soc_mode, raw_soc_mode)
-
-    async def _async_handle_web_api_auth_failure(self, err: Exception) -> None:
-        if not self._webclient:
-            return
-
-        _LOGGER.warning("Disabling Fronius web API for %s after auth failure: %s", self._host, err)
-        self._webclient = None
-        self._clear_web_api_data()
-        await async_get_token_store(self._hass).async_delete_token(self._host, API_USERNAME)
-        await self._async_sync_solar_api_warning()
-
-        if self._config_entry is not None:
-            ir.async_create_issue(
-                self._hass,
-                DOMAIN,
-                f"{MIGRATION_RECONFIGURE_ISSUE_ID_PREFIX}{self._config_entry.entry_id}",
-                is_fixable=True,
-                is_persistent=True,
-                severity=ir.IssueSeverity.WARNING,
-                translation_key="legacy_modbus_only_entry_reconfigure",
-                translation_placeholders={"entry_title": self._config_entry.title or self._name},
-                data={"entry_id": self._config_entry.entry_id},
-            )
-
-    async def _async_web_job(
-        self,
-        func,
-        *args,
-        raise_on_auth_failure: bool = False,
-    ):
-        if not self._webclient:
-            if raise_on_auth_failure:
-                raise RuntimeError("Fronius Web API is not configured")
-            return None
-
-        try:
-            return await self._hass.async_add_executor_job(func, *args)
-        except FroniusWebAuthError as err:
-            await self._async_handle_web_api_auth_failure(err)
-            if raise_on_auth_failure:
-                raise RuntimeError(
-                    "Fronius Web API authentication failed. Reconfigure the integration."
-                ) from err
-            return None
-
-    def _apply_web_battery_config(self, battery_config: dict[str, Any]) -> None:
-        raw_mode = self._as_int(battery_config.get('HYB_EM_MODE'))
-        raw_power = self._as_int(battery_config.get('HYB_EM_POWER'))
-
-        raw_soc_mode = battery_config.get('BAT_M0_SOC_MODE')
-        if isinstance(raw_soc_mode, str):
-            raw_soc_mode = raw_soc_mode.lower()
-        else:
-            raw_soc_mode = None
-
-        effective_mode = self._derive_api_battery_mode(raw_mode, raw_soc_mode)
-        self._set_effective_api_battery_mode(raw_mode, raw_soc_mode)
-        self.data['api_battery_power'] = -raw_power if raw_power is not None else None
-        api_soc_min = self._as_int(battery_config.get('BAT_M0_SOC_MIN'))
-        self.data['api_soc_min'] = api_soc_min
-        self.data['soc_maximum'] = self._as_int(battery_config.get('BAT_M0_SOC_MAX'))
-        self.data['api_backup_reserved'] = self._as_int(battery_config.get('HYB_BACKUP_RESERVED'))
-        if effective_mode == 1 and api_soc_min is not None:
-            self.data['soc_minimum'] = api_soc_min
-        self.data['api_charge_from_ac'] = self._enabled_bool(battery_config.get('HYB_BM_CHARGEFROMAC'))
-        self.data['api_charge_from_grid'] = self._enabled_bool(battery_config.get('HYB_EVU_CHARGEFROMGRID'))
-
-    def _apply_web_modbus_config(self, modbus_config: dict[str, Any]) -> None:
-        slave = modbus_config.get('slave') or {}
-        ctr = slave.get('ctr') or {}
-        restriction = ctr.get('restriction') or {}
-        mode = slave.get('mode')
-
-        self.data['api_modbus_mode'] = str(mode).upper() if mode is not None else None
-        self.data['api_modbus_control'] = self._enabled_state(ctr.get('on'))
-        self.data['api_modbus_sunspec_mode'] = slave.get('sunspecMode')
-        self.data['api_modbus_restriction'] = self._enabled_state(restriction.get('on'))
-        self.data['api_modbus_restriction_ip'] = restriction.get('ip')
-
-    def _apply_modbus_load_data(self) -> None:
-        self.data["load"] = None
-        if not self._client.meter_configured:
-            self._reset_bad_load_tracking()
-            return
-
-        primary_unit_id = self._client.primary_meter_unit_id
-        meter_prefix = self._meter_prefix(primary_unit_id)
-        meter_location = self._as_int(self.data.get(f"{meter_prefix}location"))
-        meter_power = self.data.get(f"{meter_prefix}power")
-        inverter_power = self.data.get("acpower")
-        inverter_sample_ts, meter_sample_ts = self._client.get_load_sample_timestamps(primary_unit_id)
-        if meter_sample_ts is None or meter_power is None or not self._client.is_numeric(meter_power):
-            self._reset_bad_load_tracking()
-            return
-        meter_power_f = float(meter_power)
-
-        if meter_location == 1 or (
-            meter_location is not None and 256 <= meter_location <= 511
-        ):
-            self._set_load(-meter_power_f, cache=meter_power_f <= 0)
-            return
-
-        if meter_location != 0:
-            self._reset_bad_load_tracking()
-            return
-
-        if (
-            inverter_sample_ts is None
-            or inverter_power is None
-            or not self._client.is_numeric(inverter_power)
-            or abs(inverter_sample_ts - meter_sample_ts) > LOAD_MAX_SAMPLE_SKEW_SECONDS
-        ):
-            # Do not mix inverter and meter values from different poll moments.
-            self._reset_bad_load_tracking()
-            return
-        inverter_power_f = float(inverter_power)
-
-        candidate_load = meter_power_f + inverter_power_f
-        if self._is_inverter_power_glitch(
-            candidate_load=candidate_load,
-            meter_power=meter_power_f,
-            inverter_power=inverter_power_f,
-        ):
-            self._apply_glitch_load_fallback()
-            return
-
-        storage_charge_power = self.data.get("storage_charge_power")
-        if (
-            candidate_load < 0
-            and self.storage_configured
-            and self._client.is_numeric(storage_charge_power)
-            and float(storage_charge_power) >= LOAD_STORAGE_CHARGE_MIN_W
-        ):
-            # Battery charging can make the simple formula lie; prefer unavailable over bogus 0 W.
-            self._reset_bad_load_tracking()
-            return
-
-        self._set_load(max(candidate_load, 0.0), cache=True, inverter_power=inverter_power_f)
-
-    async def refresh_web_data(self) -> None:
-        if not self._webclient:
-            return
-
-        inverter_info = await self._async_web_job(self._webclient.get_inverter_info)
-        if isinstance(inverter_info, dict):
-            self.data["inverter_temperature"] = inverter_info.get("temperature")
-        else:
-            self.data["inverter_temperature"] = None
-
-        modbus_config = await self._async_web_job(self._webclient.get_modbus_config)
-        if isinstance(modbus_config, dict):
-            self._apply_web_modbus_config(modbus_config)
-
-        solar_api_config = await self._async_web_job(self._webclient.get_solar_api_config)
-        if isinstance(solar_api_config, dict):
-            enabled = solar_api_config.get("SolarAPIv1Enabled")
-            self.data["api_solar_api_enabled"] = (
-                self._enabled_bool(enabled) if enabled is not None else None
-            )
-        else:
-            self.data["api_solar_api_enabled"] = None
-
-        if self.storage_configured:
-            storage_info = await self._async_web_job(self._webclient.get_storage_info)
-            if isinstance(storage_info, dict):
-                self.data["storage_temperature"] = storage_info.get("cell_temperature")
-            else:
-                self.data["storage_temperature"] = None
-
-            battery_config = await self._async_web_job(self._webclient.get_battery_config)
-            if isinstance(battery_config, dict):
-                self._apply_web_battery_config(battery_config)
-
-        await self._async_sync_solar_api_warning()
-
-    @toggle_busy
-    async def set_solar_api_enabled(self, enabled: bool) -> None:
-        if not self._webclient:
-            return
-
-        await self._async_web_job(
-            self._webclient.set_solar_api_enabled,
-            enabled,
-            raise_on_auth_failure=True,
+        self.web_api_state.set("api_soc_mode_raw", raw_soc_mode)
+        self.web_api_state.set(
+            "api_soc_mode",
+            API_SOC_MODE.get(raw_soc_mode, raw_soc_mode),
         )
-        self.data["api_solar_api_enabled"] = bool(enabled)
-        await self._async_sync_solar_api_warning()
-
-    @toggle_busy
-    async def reset_modbus_control(self) -> None:
-        if not self._webclient:
-            return
-
-        await self._async_web_job(
-            self._webclient.reset_modbus_control,
-            raise_on_auth_failure=True,
-        )
-
-    def _get_next_soc_limits(
-        self,
-        *,
-        soc_min: int | None = None,
-        soc_max: int | None = None,
-    ) -> tuple[int, int]:
-        next_soc_min = self._as_int(self.data.get('soc_minimum')) if soc_min is None else int(soc_min)
-        next_soc_max = self._as_int(self.data.get('soc_maximum')) if soc_max is None else int(soc_max)
-
-        next_soc_min = 5 if next_soc_min is None else next_soc_min
-        next_soc_max = 99 if next_soc_max is None else next_soc_max
-
-        if next_soc_min < 5 or next_soc_min > 100:
-            raise ValueError('SoC Minimum must be between 5 and 100')
-        if next_soc_max < 0 or next_soc_max > 100:
-            raise ValueError('SoC Maximum must be between 0 and 100')
-        if next_soc_min > next_soc_max:
-            raise ValueError('SoC Minimum must not exceed SoC Maximum')
-
-        return next_soc_min, next_soc_max
-
-    def _get_api_soc_values(
-        self,
-        *,
-        soc_min: int | None = None,
-        soc_max: int | None = None,
-    ) -> tuple[int, int, int]:
-        next_soc_min, next_soc_max = self._get_next_soc_limits(
-            soc_min=soc_min,
-            soc_max=soc_max,
-        )
-        next_backup_reserved = self._as_int(self.data.get('api_backup_reserved'))
-        next_backup_reserved = 5 if next_backup_reserved is None else next_backup_reserved
-        if next_backup_reserved < 5 or next_backup_reserved > 100:
-            raise ValueError('Battery backup reserve must be between 5 and 100')
-
-        return next_soc_min, next_soc_max, next_backup_reserved
-
-    def _derive_api_battery_mode(
-        self,
-        raw_mode: int | None,
-        raw_soc_mode: str | None,
-    ) -> int | None:
-        if raw_mode == 1 and raw_soc_mode == 'manual':
-            return 1
-        if raw_mode == 0 and raw_soc_mode == 'auto':
-            return 0
-        return None
-
-    def _api_battery_mode_is_manual(self) -> bool:
-        return self._as_int(self.data.get('api_battery_mode_effective_raw')) == 1
-
-    def _require_api_battery_mode_manual(self, control_name: str) -> None:
-        if not self._api_battery_mode_is_manual():
-            raise ValueError(f'{control_name} can only be changed when Battery API mode is Manual')
-
-    async def _set_api_soc_manual(
-        self,
-        soc_min: int | None = None,
-        soc_max: int | None = None,
-        control_name: str = 'SoC Maximum',
-    ) -> tuple[int, int, int] | None:
-        if not self._webclient:
-            return None
-        self._require_api_battery_mode_manual(control_name)
-
-        next_soc_min, next_soc_max, next_backup_reserved = self._get_api_soc_values(
-            soc_min=soc_min,
-            soc_max=soc_max,
-        )
-        await self._async_web_job(
-            self._webclient.set_battery_soc_config,
-            next_soc_min,
-            next_soc_max,
-            next_backup_reserved,
-            raise_on_auth_failure=True,
-        )
-        self._set_effective_api_battery_mode(1, 'manual')
-        self.data['soc_minimum'] = next_soc_min
-        self.data['api_soc_min'] = next_soc_min
-        self.data['soc_maximum'] = next_soc_max
-        self.data['api_backup_reserved'] = next_backup_reserved
-        self._start_battery_write_transition(control_name)
-        return next_soc_min, next_soc_max, next_backup_reserved
-
-    def check_pymodbus_version(self):
-        try:
-            current_version = version('pymodbus')
-            if current_version is None:
-                _LOGGER.warning(f"pymodbus not found")
-                return
-
-            current = pkg_version.parse(current_version)
-            required = pkg_version.parse(self.PYMODBUS_VERSION)
-
-            if current < required:
-                raise Exception(f"pymodbus {current_version} found, please update to {self.PYMODBUS_VERSION} or higher")
-            elif current > required:
-                _LOGGER.warning(f"newer pymodbus {current_version} found")
-            _LOGGER.debug(f"pymodbus {current_version}")
-        except Exception as e:
-            _LOGGER.error(f"Error checking pymodbus version: {e}")
-            raise
 
     def _as_int(self, value: Any) -> int | None:
         try:
@@ -852,52 +258,47 @@ class Hub:
         return int(numeric_value)
 
     def _enabled_state(self, value: Any) -> str:
-        if isinstance(value, str):
-            normalized = value.strip().lower()
-            is_enabled = normalized in ['1', 'true', 'on', 'yes', 'enabled']
-        else:
-            is_enabled = bool(value)
-        return 'Enabled' if is_enabled else 'Disabled'
+        return enabled_state(value)
 
     def _enabled_bool(self, value: Any) -> bool:
-        if isinstance(value, str):
-            return value.strip().lower() in ['1', 'true', 'on', 'yes', 'enabled']
-        return bool(value)
+        return is_enabled(value)
 
-    @property 
+    @property
     def device_info_storage(self) -> dict:
         return {
-            "identifiers": {(DOMAIN, f'{self._name}_battery_storage')},
-            "name": f'{self._client.data.get('s_model')}',
-            "manufacturer": self._client.data.get('s_manufacturer'),
-            "model": self._client.data.get('s_model'),
-            "serial_number": self._client.data.get('s_serial'),
+            "identifiers": {(DOMAIN, f"{self._name}_battery_storage")},
+            "name": f"{self.storage_state.get('s_model')}",
+            "manufacturer": self.storage_state.get("s_manufacturer"),
+            "model": self.storage_state.get("s_model"),
+            "serial_number": self.storage_state.get("s_serial"),
         }
 
-    @property 
+    @property
     def device_info_inverter(self) -> dict:
         return {
-            "identifiers": {(DOMAIN, f'{self._name}_inverter')},
-            "name": f'Fronius {self._client.data.get('i_model')}',
-            "manufacturer": self._client.data.get('i_manufacturer'),
-            "model": self._client.data.get('i_model'),
-            "serial_number": self._client.data.get('i_serial'),
-            "sw_version": self._client.data.get('i_sw_version'),
+            "identifiers": {(DOMAIN, f"{self._name}_inverter")},
+            "name": f"Fronius {self.inverter_state.get('i_model')}",
+            "manufacturer": self.inverter_state.get("i_manufacturer"),
+            "model": self.inverter_state.get("i_model"),
+            "serial_number": self.inverter_state.get("i_serial"),
+            "sw_version": self.inverter_state.get("i_sw_version"),
         }
-    
+
     def get_device_info_meter(self, unit_id: int) -> dict:
-        prefix = self._meter_prefix(unit_id)
         try:
-            meter_position = self._client._meter_unit_ids.index(unit_id) + 1
+            meter_position = self.meter_unit_ids.index(unit_id) + 1
         except ValueError:
             meter_position = 1
         return {
-            "identifiers": {(DOMAIN, f'{self._name}_meter_{unit_id}')},
-            "name": f'Fronius {self._client.data.get(f"{prefix}model")} Meter {meter_position}',
-            "manufacturer": self._client.data.get(f"{prefix}manufacturer"),
-            "model": self._client.data.get(f"{prefix}model"),
-            "serial_number": self._client.data.get(f"{prefix}serial"),
-            "sw_version": self._client.data.get(f"{prefix}sw_version"),
+            "identifiers": {(DOMAIN, f"{self._name}_meter_{unit_id}")},
+            "name": (
+                f"Fronius {self.meter_value(unit_id, 'model')} "
+                f"Meter {meter_position}"
+            ),
+            "manufacturer": self.meter_value(unit_id, "manufacturer"),
+            "model": self.meter_value(unit_id, "model"),
+            "serial_number": self.meter_value(unit_id, "serial"),
+            "sw_version": self.meter_value(unit_id, "sw_version"),
         }
 
     @property
@@ -910,17 +311,83 @@ class Hub:
         """Entity prefix for hub."""
         return self._entity_prefix
 
-
-
     def close(self):
-        """Disconnect client."""
+        """Disconnect the Modbus client and cancel any delayed refresh task."""
         if self._delayed_web_refresh_task and not self._delayed_web_refresh_task.done():
             self._delayed_web_refresh_task.cancel()
         self._client.close()
 
+    def _publish_data_update(self) -> None:
+        """Push the current shared data snapshot to the coordinator when possible."""
+        if self.coordinator is None:
+            return
+        set_updated_data = getattr(self.coordinator, "async_set_updated_data", None)
+        if callable(set_updated_data):
+            set_updated_data(self.snapshot_data())
+
     @property
     def data(self):
         return self._client.data
+
+    @property
+    def state(self) -> FroniusRuntimeState:
+        return self._client.state
+
+    @property
+    def inverter_state(self) -> StateSection:
+        return self._client.inverter_state
+
+    @property
+    def storage_state(self) -> StateSection:
+        return self._client.storage_state
+
+    @property
+    def web_state(self) -> StateSection:
+        return self._client.web_api_state
+
+    @property
+    def web_api_state(self) -> StateSection:
+        return self.web_state
+
+    @property
+    def mppt_state(self) -> StateSection:
+        return self._client.mppt_state
+
+    @property
+    def derived_state(self) -> StateSection:
+        return self._client.derived_state
+
+    def meter_state(self, unit_id: int) -> StateSection:
+        return self._client.meter_state(unit_id)
+
+    def meter_value(self, unit_id: int, suffix: str, default: Any = None) -> Any:
+        return self._client.meter_value(unit_id, suffix, default)
+
+    def set_meter_value(self, unit_id: int, suffix: str, value: Any) -> None:
+        self._client.set_meter_value(unit_id, suffix, value)
+
+    def snapshot_data(self) -> dict[str, Any]:
+        return self._client.data_snapshot()
+
+    @property
+    def runtime_service(self) -> HubRuntimeService:
+        return self._runtime_service
+
+    @property
+    def bootstrap_service(self) -> HubBootstrapService:
+        return self._bootstrap_service
+
+    @property
+    def warning_service(self) -> HubWarningService:
+        return self._warning_service
+
+    @property
+    def web_api_service(self) -> HubWebApiService:
+        return self._web_api_service
+
+    @property
+    def command_service(self) -> HubCommandService:
+        return self._command_service
 
     @property
     def web_api_configured(self) -> bool:
@@ -931,8 +398,39 @@ class Hub:
         return self._client.meter_configured
 
     @property
+    def meter_unit_ids(self) -> list[int]:
+        return list(self._client.meter_unit_ids)
+
+    @property
+    def primary_meter_unit_id(self) -> int:
+        return self._client.primary_meter_unit_id
+
+    @property
     def storage_configured(self):
         return self._client.storage_configured
+
+    @property
+    def mppt_configured(self) -> bool:
+        return self._client.mppt_configured
+
+    @property
+    def mppt_module_count(self) -> int:
+        return int(self._client.mppt_module_count)
+
+    @property
+    def visible_mppt_module_ids(self) -> list[int]:
+        visible_module_ids = self.mppt_state.get("mppt_visible_module_ids")
+        if (
+            isinstance(visible_module_ids, list)
+            and all(isinstance(module_id, int) for module_id in visible_module_ids)
+        ):
+            return list(visible_module_ids)
+        return list(range(1, self.mppt_module_count + 1))
+
+    @property
+    def supports_three_phase_inverter(self) -> bool:
+        model = str(self.inverter_state.get("i_model") or "")
+        return not model.startswith("Primo")
 
     @property
     def max_discharge_rate_w(self):
@@ -945,186 +443,3 @@ class Hub:
     @property
     def storage_extended_control_mode(self):
         return self._client.storage_extended_control_mode
-
-    @toggle_busy
-    async def set_mode(self, mode):
-        if mode == 0:
-            await self._client.set_auto_mode()
-        elif mode == 1:
-            await self._client.set_charge_mode()
-        elif mode == 2:
-            await self._client.set_discharge_mode()
-        elif mode == 3:
-            await self._client.set_charge_discharge_mode()
-        elif mode == 4:
-            await self._client.set_grid_charge_mode()
-            if self._webclient:
-                try:
-                    await self._set_api_charge_sources(
-                        charge_from_grid=True,
-                        charge_from_ac=True,
-                    )
-                except Exception as err:
-                    _LOGGER.warning(
-                        "Failed enabling Web API charge-source toggles after Modbus Charge from Grid: %s",
-                        err,
-                    )
-        elif mode == 5:
-            await self._client.set_grid_discharge_mode()
-        elif mode == 6:
-            await self._client.set_block_discharge_mode()
-        elif mode == 7:
-            await self._client.set_block_charge_mode()
-
-    @toggle_busy
-    async def set_soc_minimum(self, value):
-        soc_minimum = self._require_whole_number(value, 'SoC Minimum')
-        if soc_minimum < 5 or soc_minimum > 100:
-            raise ValueError('SoC Minimum must be between 5 and 100')
-        if self._webclient and self._api_battery_mode_is_manual():
-            self._get_next_soc_limits(soc_min=soc_minimum)
-        await self._client.set_minimum_reserve(soc_minimum)
-        self.data['soc_minimum'] = soc_minimum
-        if self._webclient and self._api_battery_mode_is_manual():
-            await self._set_api_soc_manual(soc_min=soc_minimum, control_name='SoC Minimum')
-
-    @toggle_busy
-    async def set_charge_limit(self, value):
-        await self._client.set_charge_limit(value)
-
-    @toggle_busy
-    async def set_discharge_limit(self, value):
-        await self._client.set_discharge_limit(value)
-
-    @toggle_busy
-    async def set_grid_charge_power(self, value):
-        await self._client.set_grid_charge_power(value)
-           
-    @toggle_busy
-    async def set_grid_discharge_power(self, value):
-        await self._client.set_grid_discharge_power(value)
-
-    @toggle_busy
-    async def set_api_battery_mode(self, mode: int):
-        if not self._webclient:
-            return
-
-        current_effective_mode = self._as_int(self.data.get('api_battery_mode_effective_raw'))
-        display_power = self._as_int(self.data.get('api_battery_power'))
-        if mode == 1 and display_power is None:
-            display_power = 0
-        power = -display_power if mode == 1 and display_power is not None else None
-        soc_min = None
-        if mode == 1 and current_effective_mode != 1:
-            soc_min = self._as_int(self.data.get('soc_minimum'))
-        await self._async_web_job(
-            self._webclient.set_battery_config,
-            mode,
-            power,
-            soc_min,
-            raise_on_auth_failure=True,
-        )
-        self._set_effective_api_battery_mode(mode, 'manual' if mode == 1 else 'auto')
-        if mode == 1:
-            self.data['api_battery_power'] = display_power
-            if soc_min is not None:
-                self.data['api_soc_min'] = soc_min
-        else:
-            self.data['api_soc_min'] = 5
-            self.data['soc_maximum'] = 100
-        self._start_battery_write_transition('Battery API mode')
-
-    @toggle_busy
-    async def set_api_battery_power(self, value: float):
-        if not self._webclient:
-            return
-        self._require_api_battery_mode_manual('Target feed in')
-
-        power = -int(round(value))
-        await self._async_web_job(
-            self._webclient.set_battery_config,
-            1,
-            power,
-            raise_on_auth_failure=True,
-        )
-        self.data['api_battery_power'] = int(round(value))
-        self._set_effective_api_battery_mode(1, 'manual')
-        self._start_battery_write_transition('Target feed in')
-
-    @toggle_busy
-    async def set_api_soc_values(
-        self,
-        soc_max: int | None = None,
-    ):
-        if not self._webclient:
-            return
-
-        await self._set_api_soc_manual(
-            soc_max=soc_max,
-            control_name='SoC Maximum',
-        )
-
-    async def _set_api_charge_sources(
-        self,
-        *,
-        charge_from_grid: bool | None = None,
-        charge_from_ac: bool | None = None,
-    ) -> None:
-        if not self._webclient:
-            return
-
-        if charge_from_ac is False:
-            next_charge_from_grid = False
-            next_charge_from_ac = False
-        else:
-            next_charge_from_grid = (
-                self._enabled_bool(self.data.get('api_charge_from_grid'))
-                if charge_from_grid is None
-                else bool(charge_from_grid)
-            )
-            next_charge_from_ac = (
-                self._enabled_bool(self.data.get('api_charge_from_ac'))
-                if charge_from_ac is None
-                else bool(charge_from_ac)
-            )
-            if next_charge_from_grid and charge_from_ac is None:
-                next_charge_from_ac = True
-
-        await self._async_web_job(
-            self._webclient.set_battery_charge_sources,
-            next_charge_from_grid,
-            next_charge_from_ac,
-            raise_on_auth_failure=True,
-        )
-        self.data['api_charge_from_grid'] = next_charge_from_grid
-        self.data['api_charge_from_ac'] = next_charge_from_ac
-        self._start_battery_write_transition('battery charge source')
-
-    @toggle_busy
-    async def set_api_charge_sources(
-        self,
-        *,
-        charge_from_grid: bool | None = None,
-        charge_from_ac: bool | None = None,
-    ) -> None:
-        await self._set_api_charge_sources(
-            charge_from_grid=charge_from_grid,
-            charge_from_ac=charge_from_ac,
-        )
-
-    async def set_ac_limit_rate(self, value):
-        await self._client.set_ac_limit_rate(value)
-
-    async def set_ac_limit_enable(self, value):
-        await self._client.set_ac_limit_enable(value)
-
-    @toggle_busy
-    async def set_power_factor(self, value):
-        await self._client.set_power_factor(value)
-
-    @toggle_busy
-    async def set_power_factor_enable(self, value):
-        await self._client.set_power_factor_enable(value)
-
-    async def set_conn_status(self, enable):
-        await self._client.set_conn_status(enable)

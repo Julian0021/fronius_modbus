@@ -6,7 +6,7 @@ import logging
 import os
 import re
 import socket
-from functools import lru_cache
+from functools import cache
 from typing import Any
 from urllib.parse import urlparse
 
@@ -15,6 +15,8 @@ from requests.auth import AuthBase
 from requests.utils import parse_dict_header
 
 from .const import API_USERNAME
+from .integration_errors import FroniusReadError
+from .value_normalization import is_enabled
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -34,12 +36,6 @@ def _as_int(value: Any, fallback: int) -> int:
         return int(value)
     except (TypeError, ValueError):
         return fallback
-
-
-def _is_enabled(value: Any) -> bool:
-    if isinstance(value, str):
-        return value.strip().lower() in {"1", "true", "on", "yes", "enabled"}
-    return bool(value)
 
 
 def _base_url(host_or_url: str) -> str:
@@ -88,6 +84,7 @@ def _parse_storage_info(attributes: Any) -> dict[str, str | None]:
 
 
 def _parse_storage_readable(payload: Any) -> dict[str, Any]:
+    """Normalize battery readable payloads into a stable identity/temperature shape."""
     info = _parse_storage_info(None)
     info["cell_temperature"] = None
 
@@ -139,10 +136,19 @@ def _body_data(payload: Any, *path: str) -> tuple[dict[str, Any] | None, str | N
     return (node, ".".join(path)) if isinstance(node, dict) else (None, None)
 
 
+def _require_body_data(payload: dict[str, Any], endpoint: str) -> None:
+    if _body_data(payload, "Body", "Data")[0] is not None:
+        return
+    raise FroniusReadError(
+        f"Unexpected payload shape from Fronius web API endpoint {endpoint}"
+    )
+
+
 def _parse_power_meter_info(
     payload: Any,
     meter_address_offset: int,
 ) -> dict[str, Any] | None:
+    """Extract meter topology from Fronius readable payload variants."""
     nodes, payload_shape = _body_data(payload, "Body", "Data")
     if nodes is None:
         nodes, payload_shape = _body_data(payload, "meter", "Body", "Data")
@@ -215,7 +221,7 @@ def _parse_power_meter_info(
     return result
 
 
-@lru_cache(maxsize=None)
+@cache
 def _hash_mode(base_url: str, user: str, timeout: float) -> str:
     try:
         response = requests.get(f"{base_url}/api/status/common", timeout=timeout)
@@ -232,6 +238,8 @@ def _hash_mode(base_url: str, user: str, timeout: float) -> str:
 
 
 class XHeaderDigestAuth(AuthBase):
+    """Digest auth helper that mirrors Fronius' MD5/SHA-256 header behavior."""
+
     def __init__(
         self,
         username: str,
@@ -249,6 +257,11 @@ class XHeaderDigestAuth(AuthBase):
         self.nonce_count = 0
         self.saved_token: dict[str, str] | None = None
 
+    def _hash_hex(self, payload: bytes) -> str:
+        if self.mode == "md5":
+            return hashlib.md5(payload).hexdigest()
+        return hashlib.sha256(payload).hexdigest()
+
     def __call__(self, request):
         if self.base_url is None:
             self.base_url = _base_url(request.url)
@@ -258,6 +271,7 @@ class XHeaderDigestAuth(AuthBase):
         return request
 
     def handle_401(self, response: requests.Response, **kwargs: object) -> requests.Response:
+        """Retry a 401 with a freshly built digest header and cache the issued token."""
         if response.status_code != 401 or "Authorization" in response.request.headers:
             return response
 
@@ -268,7 +282,7 @@ class XHeaderDigestAuth(AuthBase):
         if "realm" not in challenge or "nonce" not in challenge:
             return response
 
-        response.content
+        _ = response.content
         response.close()
 
         prepared = response.request.copy()
@@ -294,14 +308,14 @@ class XHeaderDigestAuth(AuthBase):
         return parsed.path + (f"?{parsed.query}" if parsed.query else "")
 
     def _secret(self, realm: str) -> str:
+        """Derive the per-realm secret from either the password or a cached token."""
         if not self.password and self.token and self.token.get("realm") == realm:
             return str(self.token["token"])
         payload = f"{self.username}:{realm}:{self.password}".encode()
-        if self.mode == "md5":
-            return hashlib.md5(payload).hexdigest()
-        return hashlib.sha256(payload).hexdigest()
+        return self._hash_hex(payload)
 
     def _build_header(self, method: str, uri: str, challenge: dict[str, str]) -> str:
+        """Build the X-WWW-Authenticate response using the negotiated digest mode."""
         nonce = challenge["nonce"]
         qop = challenge["qop"].split(",")[0]
         if nonce == self.last_nonce:
@@ -312,10 +326,10 @@ class XHeaderDigestAuth(AuthBase):
 
         nc = f"{self.nonce_count:08x}"
         cnonce = os.urandom(8).hex()
-        ha2 = hashlib.sha256(f"{method.upper()}:{uri}".encode()).hexdigest()
-        digest = hashlib.sha256(
+        ha2 = self._hash_hex(f"{method.upper()}:{uri}".encode())
+        digest = self._hash_hex(
             f"{self._secret(challenge['realm'])}:{nonce}:{nc}:{cnonce}:{qop}:{ha2}".encode()
-        ).hexdigest()
+        )
 
         parts = [
             f'username="{self.username}"',
@@ -376,7 +390,7 @@ class FroniusWebClient:
         timeout: float = 4.0,
     ) -> None:
         self._host = host
-        self._username = API_USERNAME
+        self._username = username or API_USERNAME
         self._password = password
         self._timeout = timeout
         self._auth = XHeaderDigestAuth(
@@ -400,7 +414,17 @@ class FroniusWebClient:
         return response
 
     def _get_json(self, path: str) -> dict[str, Any]:
-        return self._request("get", path).json()
+        try:
+            payload = self._request("get", path).json()
+        except ValueError as err:
+            raise FroniusReadError(
+                f"Fronius Web API endpoint {path} returned invalid JSON"
+            ) from err
+        if not isinstance(payload, dict):
+            raise FroniusReadError(
+                f"Fronius Web API endpoint {path} returned {type(payload).__name__}, expected object"
+            )
+        return payload
 
     def _get_public_json(self, path: str) -> dict[str, Any]:
         response = requests.get(
@@ -408,7 +432,17 @@ class FroniusWebClient:
             timeout=self._timeout,
         )
         response.raise_for_status()
-        return response.json()
+        try:
+            payload = response.json()
+        except ValueError as err:
+            raise FroniusReadError(
+                f"Fronius public endpoint {path} returned invalid JSON"
+            ) from err
+        if not isinstance(payload, dict):
+            raise FroniusReadError(
+                f"Fronius public endpoint {path} returned {type(payload).__name__}, expected object"
+            )
+        return payload
 
     def _post_ok(self, path: str, payload: dict[str, Any] | None = None) -> bool:
         return self._request("post", path, payload=payload).ok
@@ -444,51 +478,33 @@ class FroniusWebClient:
         return self._get_json("/api/config/solar_api")
 
     def get_storage_info(self) -> dict[str, Any]:
-        try:
-            return _parse_storage_readable(
-                self._get_json("/api/components/BatteryManagementSystem/readable")
-            )
-        except FroniusWebAuthError:
-            raise
-        except Exception as err:
-            _LOGGER.warning("Failed reading storage identity via web API from %s: %s", self._host, err)
-        return _parse_storage_readable(None)
+        payload = self._get_json("/api/components/BatteryManagementSystem/readable")
+        _require_body_data(payload, "/api/components/BatteryManagementSystem/readable")
+        return _parse_storage_readable(payload)
 
     def get_inverter_info(self) -> dict[str, Any]:
-        try:
-            return _parse_inverter_readable(
-                self._get_json("/api/components/inverter/readable")
-            )
-        except FroniusWebAuthError:
-            raise
-        except Exception as err:
-            _LOGGER.warning("Failed reading inverter readable data via web API from %s: %s", self._host, err)
-        return _parse_inverter_readable(None)
+        payload = self._get_json("/api/components/inverter/readable")
+        _require_body_data(payload, "/api/components/inverter/readable")
+        return _parse_inverter_readable(payload)
 
     def get_power_meter_info(self, meter_address_offset: int = 200) -> dict[str, Any] | None:
-        try:
-            data = self._get_public_json("/api/components/PowerMeter/readable")
-            meter_info = _parse_power_meter_info(data, meter_address_offset)
-            if meter_info is None:
-                top_level_keys = list(data.keys()) if isinstance(data, dict) else []
-                _LOGGER.debug(
-                    "Unrecognized PowerMeter payload shape from %s: top-level keys=%s",
-                    self._host,
-                    top_level_keys,
-                )
-                return None
-
-            _LOGGER.debug(
-                "Parsed PowerMeter payload from %s via %s: unit_ids=%s primary_unit_id=%s",
-                self._host,
-                meter_info.get("payload_shape"),
-                meter_info.get("unit_ids"),
-                meter_info.get("primary_unit_id"),
+        data = self._get_public_json("/api/components/PowerMeter/readable")
+        meter_info = _parse_power_meter_info(data, meter_address_offset)
+        if meter_info is None:
+            top_level_keys = list(data.keys())
+            raise FroniusReadError(
+                "Unexpected payload shape from Fronius public endpoint "
+                f"/api/components/PowerMeter/readable: top-level keys={top_level_keys}"
             )
-            return meter_info
-        except Exception as err:
-            _LOGGER.warning("Failed reading power meter config via web API from %s: %s", self._host, err)
-        return None
+
+        _LOGGER.debug(
+            "Parsed PowerMeter payload from %s via %s: unit_ids=%s primary_unit_id=%s",
+            self._host,
+            meter_info.get("payload_shape"),
+            meter_info.get("unit_ids"),
+            meter_info.get("primary_unit_id"),
+        )
+        return meter_info
 
     def ensure_modbus_enabled(
         self,
@@ -497,6 +513,7 @@ class FroniusWebClient:
         inverter_unit_id: int,
         restrict_to_client_ip: bool = False,
     ) -> bool:
+        """Apply Modbus TCP settings only when the current device config differs."""
         current = self.get_modbus_config()
         slave = current.get("slave") or {}
         ctr = slave.get("ctr") or {}
@@ -506,11 +523,11 @@ class FroniusWebClient:
 
         if (
             slave.get("mode") == "tcp"
-            and _is_enabled(ctr.get("on"))
+            and is_enabled(ctr.get("on"))
             and _as_int(slave.get("port"), port) == int(port)
             and _as_int(slave.get("meterAddress"), meter_address) == int(meter_address)
             and _as_int(slave.get("rtu_inverter_slave_id"), inverter_unit_id) == int(inverter_unit_id)
-            and _is_enabled(current_restriction.get("on")) == restriction_on
+            and is_enabled(current_restriction.get("on")) == restriction_on
             and (not restriction_on or current_restriction.get("ip") == restriction_ip)
         ):
             return False

@@ -36,7 +36,7 @@ class SnapshotModbusClient(FroniusModbusClient):
 async def test_init_data_discovers_live_device_layout(live_modbus_registers) -> None:
     client = SnapshotModbusClient(live_modbus_registers)
 
-    assert await client.init_data() is True
+    assert await client.runtime_service.init_data() is True
 
     assert client.mppt_configured is True
     assert client.storage_configured is True
@@ -61,17 +61,18 @@ async def test_init_data_discovers_live_device_layout(live_modbus_registers) -> 
 @pytest.mark.asyncio
 async def test_live_snapshot_decodes_expected_poll_values(live_modbus_registers) -> None:
     client = SnapshotModbusClient(live_modbus_registers)
+    read_service = client.read_service
 
-    assert await client.read_device_info_data(prefix="i_", unit_id=1) is True
-    assert await client.read_inverter_nameplate_data() is True
-    assert await client.read_inverter_data() is True
-    assert await client.read_inverter_status_data() is True
-    assert await client.read_inverter_model_settings_data() is True
-    assert await client.read_inverter_controls_data() is True
-    assert await client.read_mppt_data() is True
-    assert await client.read_inverter_storage_data() is True
-    assert await client.read_device_info_data(prefix="meter_200_", unit_id=200) is True
-    assert await client.read_meter_data(unit_id=200, is_primary=True) is True
+    assert await read_service.read_device_info_data(prefix="i_", unit_id=1) is True
+    assert await read_service.read_inverter_nameplate_data() is True
+    assert await read_service.read_inverter_data() is True
+    assert await read_service.read_inverter_status_data() is True
+    assert await read_service.read_inverter_model_settings_data() is True
+    assert await read_service.read_inverter_controls_data() is True
+    assert await read_service.read_mppt_data() is True
+    assert await read_service.read_inverter_storage_data() is True
+    assert await read_service.read_device_info_data(prefix="meter_200_", unit_id=200) is True
+    assert await read_service.read_meter_data(unit_id=200, is_primary=True) is True
 
     assert client.data["acpower"] == pytest.approx(2268.6)
     assert client.data["line_frequency"] == pytest.approx(50.03)

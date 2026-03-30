@@ -6,6 +6,7 @@ import logging
 import re
 import time
 from datetime import timedelta
+from inspect import signature
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
@@ -33,6 +34,13 @@ _LOGGER = logging.getLogger(__name__)
 _SOLAR_API_FIRMWARE_RE = re.compile(r"^(\d+)\.(\d+)\.(\d+)(?:-(\d+))?$")
 
 
+def _coordinator_init_supports_config_entry() -> bool:
+    try:
+        return "config_entry" in signature(DataUpdateCoordinator.__init__).parameters
+    except (TypeError, ValueError):
+        return False
+
+
 class FroniusCoordinator(DataUpdateCoordinator):
     """Coordinator for Fronius Modbus data updates."""
 
@@ -43,29 +51,18 @@ class FroniusCoordinator(DataUpdateCoordinator):
         config_entry: ConfigEntry | None = None,
     ) -> None:
         """Initialize the coordinator."""
-        if config_entry is not None:
-            try:
-                super().__init__(
-                    hass,
-                    _LOGGER,
-                    name=f"{DOMAIN}_{hub._id}_coordinator",
-                    update_interval=hub._scan_interval,
-                    config_entry=config_entry,
-                )
-            except TypeError:
-                super().__init__(
-                    hass,
-                    _LOGGER,
-                    name=f"{DOMAIN}_{hub._id}_coordinator",
-                    update_interval=hub._scan_interval,
-                )
-        else:
-            super().__init__(
-                hass,
-                _LOGGER,
-                name=f"{DOMAIN}_{hub._id}_coordinator",
-                update_interval=hub._scan_interval,
-            )
+        init_kwargs = {
+            "name": f"{DOMAIN}_{hub._id}_coordinator",
+            "update_interval": hub._scan_interval,
+        }
+        if config_entry is not None and _coordinator_init_supports_config_entry():
+            init_kwargs["config_entry"] = config_entry
+
+        super().__init__(
+            hass,
+            _LOGGER,
+            **init_kwargs,
+        )
         self.hub = hub
 
     async def _async_update_data(self) -> dict:

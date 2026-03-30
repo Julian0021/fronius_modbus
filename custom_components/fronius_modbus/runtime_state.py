@@ -65,6 +65,7 @@ _STORAGE_KEYS = {
     "grid_discharge_power",
     "charging_power",
     "discharging_power",
+    "max_charge",
     "storage_temperature",
     "storage_model_address",
     "storage_model_id",
@@ -79,6 +80,8 @@ _STORAGE_KEYS = {
     "storage_discharge_voltage",
     "storage_discharge_power",
     "storage_discharge_lfte",
+    "WChaGra",
+    "WDisChaGra",
 }
 
 _WEB_API_KEYS = {
@@ -323,12 +326,14 @@ class FroniusRuntimeState:
         self._data_view.refresh_from_state()
 
     def get_flat(self, key: str, default: Any = None) -> Any:
-        if self.meters.contains_flat_key(key):
+        if _METER_KEY_RE.match(key):
             return self.meters.get_flat_key(key, default)
 
         section = self._find_existing_section(key)
         if section is None:
             section = self._target_section_for_new_key(key)
+        if section is None:
+            return default
         return section.get(key, default)
 
     def set_flat(self, key: str, value: Any) -> None:
@@ -339,6 +344,8 @@ class FroniusRuntimeState:
         section = self._find_existing_section(key)
         if section is None:
             section = self._target_section_for_new_key(key)
+        if section is None:
+            raise KeyError(self._unknown_key_message(key))
         section.set(key, value)
 
     def del_flat(self, key: str) -> None:
@@ -363,7 +370,7 @@ class FroniusRuntimeState:
                 return section
         return None
 
-    def _target_section_for_new_key(self, key: str) -> StateSection:
+    def _target_section_for_new_key(self, key: str) -> StateSection | None:
         if key.startswith("api_") or key in _WEB_API_KEYS:
             return self.web_api
         if key.startswith("i_") or key in _INVERTER_KEYS:
@@ -374,7 +381,14 @@ class FroniusRuntimeState:
             return self.mppt
         if key in _DERIVED_KEYS:
             return self.derived
-        return self.derived
+        return None
+
+    @staticmethod
+    def _unknown_key_message(key: str) -> str:
+        return (
+            f"Unknown runtime state key '{key}'; "
+            "refusing to infer a runtime-state section"
+        )
 
     def _publish_set(self, key: str, value: Any) -> None:
         self._data_view._apply_sync_set(key, value)

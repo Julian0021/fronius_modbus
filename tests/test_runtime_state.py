@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from custom_components.fronius_modbus.runtime_state import FroniusRuntimeState
 
 
@@ -46,3 +48,25 @@ def test_runtime_state_clear_removes_meter_and_section_values() -> None:
     assert state.storage.get("soc_minimum") is None
     assert state.meters.get_value(200, "power") is None
     assert state.meters.get_value(201, "phase_count") is None
+
+
+def test_runtime_state_rejects_unknown_flat_keys() -> None:
+    state = FroniusRuntimeState()
+
+    with pytest.raises(KeyError, match="unknown_runtime_key"):
+        state.data["unknown_runtime_key"] = 1
+
+    assert state.data.get("unknown_runtime_key") is None
+    assert "unknown_runtime_key" not in state.snapshot()
+
+
+def test_runtime_state_routes_storage_diagnostic_keys_without_fallbacks() -> None:
+    state = FroniusRuntimeState()
+
+    state.data["max_charge"] = 2048
+    state.data["WChaGra"] = 100
+    state.data["WDisChaGra"] = 50
+
+    assert state.storage.get("max_charge") == 2048
+    assert state.storage.get("WChaGra") == 100
+    assert state.storage.get("WDisChaGra") == 50

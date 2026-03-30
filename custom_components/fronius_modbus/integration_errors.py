@@ -22,5 +22,9 @@ class FroniusDiscoveryError(FroniusError):
     """Raised when required startup discovery cannot complete."""
 
 
+class FroniusDependencyError(FroniusError):
+    """Raised when required local integration dependencies are missing or invalid."""
+
+
 class FroniusOperationError(FroniusError):
     """Raised when a user-triggered operation cannot be completed or verified."""

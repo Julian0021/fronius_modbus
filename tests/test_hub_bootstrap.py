@@ -2,10 +2,15 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
 from homeassistant.core import HomeAssistant
 
 import custom_components.fronius_modbus.hub_bootstrap as hub_bootstrap_module
-from custom_components.fronius_modbus.hub_bootstrap import HubBootstrapService
+from custom_components.fronius_modbus.hub_bootstrap import (
+    HubBootstrapService,
+    check_pymodbus_version,
+)
+from custom_components.fronius_modbus.integration_errors import FroniusDependencyError
 
 
 class _BootstrapClient:
@@ -133,3 +138,34 @@ async def test_bootstrap_service_runs_named_startup_steps(monkeypatch) -> None:
         ("storage_state.set", "storage_temperature", 23.5),
         "refresh_web_data",
     ]
+
+
+def test_check_pymodbus_version_raises_dependency_error_on_resolution_failure(
+    monkeypatch,
+) -> None:
+    def _raise_version_error(_name: str) -> str:
+        raise RuntimeError("missing dist")
+
+    monkeypatch.setattr(
+        hub_bootstrap_module,
+        "_manifest_pymodbus_minimum_version",
+        lambda: "3.7.0",
+    )
+    monkeypatch.setattr(hub_bootstrap_module, "version", _raise_version_error)
+
+    with pytest.raises(FroniusDependencyError, match="installed pymodbus version"):
+        check_pymodbus_version()
+
+
+def test_check_pymodbus_version_raises_dependency_error_on_old_version(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        hub_bootstrap_module,
+        "_manifest_pymodbus_minimum_version",
+        lambda: "3.7.0",
+    )
+    monkeypatch.setattr(hub_bootstrap_module, "version", lambda _name: "3.6.0")
+
+    with pytest.raises(FroniusDependencyError, match="please update to 3.7.0 or higher"):
+        check_pymodbus_version()

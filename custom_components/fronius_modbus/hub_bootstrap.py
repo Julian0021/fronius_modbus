@@ -11,7 +11,7 @@ from homeassistant.config_entries import ConfigEntry
 from packaging import version as pkg_version
 from packaging.requirements import InvalidRequirement, Requirement
 
-from .integration_errors import FroniusDiscoveryError, FroniusReadError
+from .integration_errors import FroniusDependencyError, FroniusReadError
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -54,10 +54,10 @@ def check_pymodbus_version() -> None:
         current = pkg_version.parse(current_version)
         required = pkg_version.parse(required_version)
     except Exception as err:
-        raise FroniusDiscoveryError("Error checking pymodbus version") from err
+        raise FroniusDependencyError("Error checking installed pymodbus version") from err
 
     if current < required:
-        raise FroniusDiscoveryError(
+        raise FroniusDependencyError(
             f"pymodbus {current_version} found, please update to {required_version} or higher"
         )
 

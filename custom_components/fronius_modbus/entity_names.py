@@ -50,6 +50,57 @@ def _format_translated_name(
         return translated_name
 
 
+def _resolve_entity_name_from_translation_data(
+    translation_data: dict[str, Any],
+    *,
+    entity_platform: str,
+    translation_key: str,
+    placeholders: dict[str, str] | None,
+    logger: logging.Logger | None,
+) -> str | None:
+    translated_name = _translated_name_from_data(
+        translation_data,
+        entity_platform=entity_platform,
+        translation_key=translation_key,
+    )
+    if translated_name is None:
+        return None
+    return _format_translated_name(
+        translated_name,
+        entity_platform=entity_platform,
+        translation_key=translation_key,
+        placeholders=placeholders,
+        logger=logger,
+    )
+
+
+def _resolve_entity_name_from_lookup(
+    hass: HomeAssistant,
+    *,
+    entity_platform: str | None,
+    translation_key: str | None,
+    placeholders: dict[str, str] | None,
+    fallback: str,
+    logger: logging.Logger | None,
+    load_translation_data,
+) -> str:
+    if translation_key is None or entity_platform is None:
+        return fallback
+
+    for candidate in translation_language_candidates(hass):
+        resolved_name = _resolve_entity_name_from_translation_data(
+            load_translation_data(candidate),
+            entity_platform=entity_platform,
+            translation_key=translation_key,
+            placeholders=placeholders,
+            logger=logger,
+        )
+        if resolved_name is not None:
+            return resolved_name
+
+    return fallback
+
+
 def resolve_cached_entity_name(
     hass: HomeAssistant,
     *,
@@ -60,26 +111,15 @@ def resolve_cached_entity_name(
     logger: logging.Logger | None = None,
 ) -> str:
     """Resolve an entity name from the translation cache, or return the fallback."""
-    if translation_key is None or entity_platform is None:
-        return fallback
-
-    for candidate in translation_language_candidates(hass):
-        translated_name = _translated_name_from_data(
-            cached_translation_data(candidate),
-            entity_platform=entity_platform,
-            translation_key=translation_key,
-        )
-        if translated_name is None:
-            continue
-        return _format_translated_name(
-            translated_name,
-            entity_platform=entity_platform,
-            translation_key=translation_key,
-            placeholders=placeholders,
-            logger=logger,
-        )
-
-    return fallback
+    return _resolve_entity_name_from_lookup(
+        hass,
+        entity_platform=entity_platform,
+        translation_key=translation_key,
+        placeholders=placeholders,
+        fallback=fallback,
+        logger=logger,
+        load_translation_data=cached_translation_data,
+    )
 
 
 async def async_resolve_entity_name(
@@ -92,20 +132,19 @@ async def async_resolve_entity_name(
     logger: logging.Logger | None = None,
 ) -> str:
     """Resolve an entity name from bundled translations, or return the fallback."""
+    translation_data_by_language = {}
     for candidate in translation_language_candidates(hass):
-        translated_name = _translated_name_from_data(
-            await async_get_translation_data(hass, candidate),
-            entity_platform=entity_platform,
-            translation_key=translation_key,
-        )
-        if translated_name is None:
-            continue
-        return _format_translated_name(
-            translated_name,
-            entity_platform=entity_platform,
-            translation_key=translation_key,
-            placeholders=placeholders,
-            logger=logger,
+        translation_data_by_language[candidate] = await async_get_translation_data(
+            hass,
+            candidate,
         )
 
-    return fallback
+    return _resolve_entity_name_from_lookup(
+        hass,
+        entity_platform=entity_platform,
+        translation_key=translation_key,
+        placeholders=placeholders,
+        fallback=fallback,
+        logger=logger,
+        load_translation_data=translation_data_by_language.__getitem__,
+    )

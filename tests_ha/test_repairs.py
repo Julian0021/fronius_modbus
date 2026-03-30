@@ -105,6 +105,48 @@ async def test_reconfigure_repair_applies_modbus_config_before_updating_entry(
 
 
 @pytest.mark.asyncio
+async def test_disable_solar_api_repair_uses_service_owned_refresh_and_publish(
+    hass,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    flow = FroniusDisableSolarApiRepairFlow("entry-1")
+    service_calls: list[str] = []
+    coordinator = Mock()
+    hub = Mock(
+        web_api_configured=True,
+        web_state={"api_solar_api_enabled": True},
+        coordinator=coordinator,
+    )
+
+    async def _fake_set_solar_api_enabled(enabled: bool) -> None:
+        assert enabled is False
+        service_calls.append("set_solar_api_enabled")
+        hub.web_state["api_solar_api_enabled"] = False
+
+    hub.web_api_service = Mock(set_solar_api_enabled=_fake_set_solar_api_enabled)
+
+    entry = MockConfigEntry(domain=DOMAIN, entry_id="entry-1")
+    entry.runtime_data = hub
+    entry.add_to_hass(hass)
+    flow.hass = hass
+
+    resolve_issue = Mock()
+    monkeypatch.setattr(flow, "_resolve_issue", resolve_issue)
+    monkeypatch.setattr(
+        flow,
+        "async_create_entry",
+        lambda *, title, data: {"type": "create_entry", "title": title, "data": data},
+    )
+
+    result = await flow._async_finish_repair()
+
+    assert result == {"type": "create_entry", "title": "", "data": {}}
+    assert service_calls == ["set_solar_api_enabled"]
+    coordinator.async_set_updated_data.assert_not_called()
+    resolve_issue.assert_called_once_with()
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("error", "expected_error"),
     [

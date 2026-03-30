@@ -133,11 +133,8 @@ class FroniusDisableSolarApiRepairFlow(RepairsFlow):
             raise FroniusOperationError("Fronius Web API is not configured")
 
         await hub.web_api_service.set_solar_api_enabled(False)
-        await hub.web_api_service.refresh_web_data()
         if not hub.web_api_configured or hub.web_state.get("api_solar_api_enabled") is not False:
             raise FroniusOperationError("Solar API disable could not be confirmed")
-        if hub.coordinator is not None:
-            hub.coordinator.async_set_updated_data(hub.snapshot_data())
         self._resolve_issue()
         return self.async_create_entry(title="", data={})
 

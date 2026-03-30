@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from functools import cache
 import hashlib
 import json
 import logging
@@ -21,6 +20,7 @@ from .value_normalization import is_enabled
 _LOGGER = logging.getLogger(__name__)
 
 MASTER_RTUIF = {"master": {"rtuif": [{"if": "rtu0"}, {"if": "rtu1"}]}}
+_HASH_MODE_CACHE: dict[tuple[str, str, float], str] = {}
 
 
 class ClientIpResolutionError(RuntimeError):
@@ -282,8 +282,16 @@ def _parse_power_meter_info(
     return result
 
 
-@cache
 def _hash_mode(base_url: str, user: str, timeout: float) -> str:
+    return _resolve_hash_mode(base_url, user, timeout)[0]
+
+
+def _resolve_hash_mode(base_url: str, user: str, timeout: float) -> tuple[str, bool]:
+    cache_key = (base_url, user, timeout)
+    cached_mode = _HASH_MODE_CACHE.get(cache_key)
+    if cached_mode is not None:
+        return cached_mode, True
+
     try:
         response = requests.get(f"{base_url}/api/status/common", timeout=timeout)
         response.raise_for_status()
@@ -294,8 +302,18 @@ def _hash_mode(base_url: str, user: str, timeout: float) -> str:
             .get(f"{user}HashingVersion")
         )
     except (requests.RequestException, ValueError):
-        version = None
-    return "md5" if version == 1 else "sha256"
+        return "sha256", False
+
+    normalized_version = _as_int(version, 0)
+    if normalized_version == 1:
+        mode = "md5"
+    elif normalized_version == 2:
+        mode = "sha256"
+    else:
+        return "sha256", False
+
+    _HASH_MODE_CACHE[cache_key] = mode
+    return mode, True
 
 
 class XHeaderDigestAuth(AuthBase):
@@ -314,6 +332,7 @@ class XHeaderDigestAuth(AuthBase):
         self.base_url: str | None = None
         self.token = token if isinstance(token, dict) else None
         self.mode: str | None = None
+        self._mode_confirmed = False
         self.last_nonce = ""
         self.nonce_count = 0
         self.saved_token: dict[str, str] | None = None
@@ -327,7 +346,11 @@ class XHeaderDigestAuth(AuthBase):
         if self.base_url is None:
             self.base_url = _base_url(request.url)
         if self.mode is None:
-            self.mode = _hash_mode(self.base_url, self.username, self.timeout)
+            self.mode, self._mode_confirmed = _resolve_hash_mode(
+                self.base_url,
+                self.username,
+                self.timeout,
+            )
         request.register_hook("response", self.handle_401)
         return request
 
@@ -354,6 +377,11 @@ class XHeaderDigestAuth(AuthBase):
         )
         retried = self._retry_request(prepared, **kwargs)
         retried.history.append(response)
+        if retried.status_code == 401 and not self._mode_confirmed:
+            self.mode = None
+        elif retried.status_code != 401 and not self._mode_confirmed and self.base_url is not None:
+            _HASH_MODE_CACHE[(self.base_url, self.username, self.timeout)] = self.mode or "sha256"
+            self._mode_confirmed = True
         if retried.status_code != 401 and self.password:
             self.saved_token = {
                 "realm": challenge["realm"],

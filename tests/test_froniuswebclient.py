@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 from requests import RequestException
 
+import custom_components.fronius_modbus.froniuswebclient as froniuswebclient_module
 from custom_components.fronius_modbus.froniuswebclient import (
     FroniusWebAuthError,
     FroniusWebClient,
@@ -197,3 +198,73 @@ def test_get_storage_info_raises_read_error_for_unexpected_payload_shape(monkeyp
 
     with pytest.raises(FroniusReadError):
         client.get_storage_info()
+
+
+def test_hash_mode_does_not_cache_failed_probe(monkeypatch) -> None:
+    class _Response:
+        def __init__(self, version: int) -> None:
+            self._version = version
+
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, object]:
+            return {
+                "authenticationOptions": {
+                    "digest": {"customerHashingVersion": self._version}
+                }
+            }
+
+    calls: list[tuple[str, float]] = []
+    responses = [RequestException("temporary failure"), _Response(1)]
+
+    def _fake_get(url: str, timeout: float):
+        calls.append((url, timeout))
+        result = responses.pop(0)
+        if isinstance(result, Exception):
+            raise result
+        return result
+
+    monkeypatch.setattr(froniuswebclient_module.requests, "get", _fake_get)
+    froniuswebclient_module._HASH_MODE_CACHE.clear()
+
+    assert froniuswebclient_module._hash_mode("http://fixture-host", "customer", 4.0) == "sha256"
+    assert froniuswebclient_module._hash_mode("http://fixture-host", "customer", 4.0) == "md5"
+    assert froniuswebclient_module._hash_mode("http://fixture-host", "customer", 4.0) == "md5"
+    assert calls == [
+        ("http://fixture-host/api/status/common", 4.0),
+        ("http://fixture-host/api/status/common", 4.0),
+    ]
+
+
+def test_hash_mode_does_not_cache_inconclusive_probe(monkeypatch) -> None:
+    class _Response:
+        def __init__(self, payload: dict[str, object]) -> None:
+            self._payload = payload
+
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, object]:
+            return self._payload
+
+    calls: list[tuple[str, float]] = []
+    responses = [
+        _Response({"authenticationOptions": {"digest": {}}}),
+        _Response({"authenticationOptions": {"digest": {"customerHashingVersion": 1}}}),
+    ]
+
+    def _fake_get(url: str, timeout: float):
+        calls.append((url, timeout))
+        return responses.pop(0)
+
+    monkeypatch.setattr(froniuswebclient_module.requests, "get", _fake_get)
+    froniuswebclient_module._HASH_MODE_CACHE.clear()
+
+    assert froniuswebclient_module._hash_mode("http://fixture-host", "customer", 4.0) == "sha256"
+    assert froniuswebclient_module._hash_mode("http://fixture-host", "customer", 4.0) == "md5"
+    assert froniuswebclient_module._hash_mode("http://fixture-host", "customer", 4.0) == "md5"
+    assert calls == [
+        ("http://fixture-host/api/status/common", 4.0),
+        ("http://fixture-host/api/status/common", 4.0),
+    ]

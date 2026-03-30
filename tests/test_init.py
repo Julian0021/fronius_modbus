@@ -26,9 +26,11 @@ class _FakeRuntimeData:
         self,
         *,
         web_api_configured: bool = True,
+        entity_registry_cleanup_safe: bool = True,
         bootstrap_error: Exception | None = None,
     ) -> None:
         self.web_api_configured = web_api_configured
+        self.entity_registry_cleanup_safe = entity_registry_cleanup_safe
         self._bootstrap_error = bootstrap_error
         self.bootstrap_calls: list[ConfigEntry] = []
         self.close_calls = 0
@@ -155,7 +157,7 @@ async def test_async_setup_entry_attaches_runtime_data_only_on_success(
     assert issue_calls == [True, True]
     assert registry_calls == [
         ("migrate_mppt", runtime_data),
-        ("remove_unexpected", runtime_data, True),
+        ("remove_unexpected", runtime_data, False),
         ("remove_legacy", None),
     ]
     assert hasattr(entry, "_update_listener")
@@ -205,7 +207,31 @@ async def test_async_setup_entry_closes_and_detaches_runtime_data_when_forwardin
     assert issue_calls == [True, True]
     assert registry_calls == [
         ("migrate_mppt", runtime_data),
-        ("remove_unexpected", runtime_data, True),
+        ("remove_unexpected", runtime_data, False),
         ("remove_legacy", None),
     ]
     assert not hasattr(entry, "_update_listener")
+
+
+async def test_async_setup_entry_preserves_topology_entities_when_runtime_model_is_uncertain(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runtime_data = _FakeRuntimeData(
+        web_api_configured=True,
+        entity_registry_cleanup_safe=False,
+    )
+    issue_calls: list[bool] = []
+    registry_calls: list[tuple[str, object]] = []
+    _patch_setup_dependencies(monkeypatch, runtime_data, issue_calls, registry_calls)
+
+    hass = _make_hass()
+    entry = _make_entry()
+
+    result = await integration.async_setup_entry(hass, entry)
+
+    assert result is True
+    assert registry_calls == [
+        ("migrate_mppt", runtime_data),
+        ("remove_unexpected", runtime_data, True),
+        ("remove_legacy", None),
+    ]

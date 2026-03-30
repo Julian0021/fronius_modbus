@@ -46,6 +46,7 @@ class FroniusModbusClient(ExtModbusClient):
         self.meter_configured = False
         self.mppt_configured = False
         self.storage_configured = False
+        self.entity_registry_cleanup_safe = True
         self.storage_extended_control_mode = 0
         self.max_charge_rate_w = 11000
         self.max_discharge_rate_w = 11000

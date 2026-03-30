@@ -440,6 +440,10 @@ class Hub:
         return self._client.mppt_configured
 
     @property
+    def entity_registry_cleanup_safe(self) -> bool:
+        return bool(getattr(self._client, "entity_registry_cleanup_safe", True))
+
+    @property
     def mppt_module_count(self) -> int:
         return int(self._client.mppt_module_count)
 

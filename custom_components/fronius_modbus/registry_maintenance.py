@@ -26,6 +26,7 @@ _LOGGER = logging.getLogger(__name__)
 
 _LEGACY_METER_DEVICE_RE = re.compile(r".*_meter\d+")
 _TOPOLOGY_SENSITIVE_ENTITY_KEY_PREFIXES = (
+    "meter_",
     "mppt_module_",
     "storage_charge_",
     "storage_discharge_",

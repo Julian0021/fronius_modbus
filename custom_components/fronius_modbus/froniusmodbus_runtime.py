@@ -19,6 +19,7 @@ class FroniusModbusRuntimeService:
         previous_mppt_configured = self._facade.mppt_configured
         previous_meter_unit_ids = list(self._facade.meter_unit_ids)
         previous_primary_meter_unit_id = self._facade.primary_meter_unit_id
+        entity_registry_cleanup_safe = True
 
         try:
             await self._facade.connect()
@@ -43,6 +44,7 @@ class FroniusModbusRuntimeService:
                 self._facade.mppt_configured = True
         except FroniusError as err:
             self._facade.mppt_configured = previous_mppt_configured
+            entity_registry_cleanup_safe = False
             _LOGGER.warning("Error while checking mppt data: %s", err)
 
         discovered_meter_unit_ids: list[int] = []
@@ -91,7 +93,10 @@ class FroniusModbusRuntimeService:
                 self._facade._port,
                 previous_meter_unit_ids,
             )
+        if meter_probe_failed:
+            entity_registry_cleanup_safe = False
         self._facade.meter_configured = bool(self._facade.meter_unit_ids)
+        self._facade.entity_registry_cleanup_safe = entity_registry_cleanup_safe
 
         if self._facade.meter_configured:
             _LOGGER.info(

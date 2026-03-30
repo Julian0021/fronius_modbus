@@ -17,6 +17,7 @@ class _RuntimeFacade:
         meter_unit_ids: list[int],
         primary_meter_unit_id: int,
         meter_probe_results: dict[int, bool | Exception],
+        mppt_probe_result: bool | Exception = False,
     ) -> None:
         self._host = "fixture-host"
         self._port = 502
@@ -26,9 +27,11 @@ class _RuntimeFacade:
         self._primary_meter_unit_id = primary_meter_unit_id
         self.meter_configured = bool(meter_unit_ids)
         self.mppt_configured = False
+        self.entity_registry_cleanup_safe = True
         self.data: dict[str, object] = {}
         self.set_meter_unit_ids_calls: list[tuple[list[int], int | None]] = []
         self._meter_probe_results = dict(meter_probe_results)
+        self._mppt_probe_result = mppt_probe_result
         self.read_service = SimpleNamespace(
             read_device_info_data=self._read_device_info_data,
             read_mppt_data=self._read_mppt_data,
@@ -78,7 +81,9 @@ class _RuntimeFacade:
         return bool(probe_result)
 
     async def _read_mppt_data(self) -> bool:
-        return False
+        if isinstance(self._mppt_probe_result, Exception):
+            raise self._mppt_probe_result
+        return bool(self._mppt_probe_result)
 
     async def _read_inverter_nameplate_data(self) -> bool:
         return True
@@ -99,6 +104,7 @@ async def test_runtime_init_realigns_primary_meter_when_discovery_changes_meter_
     assert await service.init_data() is True
     assert facade.meter_unit_ids == (200,)
     assert facade.primary_meter_unit_id == 200
+    assert facade.entity_registry_cleanup_safe is False
     assert facade.set_meter_unit_ids_calls[-1] == ([200], None)
 
 
@@ -117,4 +123,20 @@ async def test_runtime_init_preserves_primary_meter_when_discovery_falls_back() 
     assert await service.init_data() is True
     assert facade.meter_unit_ids == (200, 240)
     assert facade.primary_meter_unit_id == 240
+    assert facade.entity_registry_cleanup_safe is False
     assert facade.set_meter_unit_ids_calls[-1] == ([200, 240], 240)
+
+
+@pytest.mark.asyncio
+async def test_runtime_init_marks_entity_cleanup_unsafe_after_mppt_probe_failure() -> None:
+    facade = _RuntimeFacade(
+        meter_unit_ids=[200],
+        primary_meter_unit_id=200,
+        meter_probe_results={200: True},
+        mppt_probe_result=FroniusReadError("temporary mppt probe failure"),
+    )
+    service = FroniusModbusRuntimeService(facade)
+
+    assert await service.init_data() is True
+    assert facade.mppt_configured is False
+    assert facade.entity_registry_cleanup_safe is False

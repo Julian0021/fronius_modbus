@@ -466,10 +466,10 @@ INVERTER_WEB_SENSOR_TYPES = {
 }
 
 MPPT_MODULE_SENSOR_TYPES = (
-    MpptModuleSensorSpec("dc_current", "dc_current", SensorDeviceClass.CURRENT, SensorStateClass.MEASUREMENT, "A", "mdi:current-dc"),
-    MpptModuleSensorSpec("dc_voltage", "dc_voltage", SensorDeviceClass.VOLTAGE, SensorStateClass.MEASUREMENT, "V", "mdi:lightning-bolt"),
-    MpptModuleSensorSpec("dc_power", "dc_power", SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, "W", "mdi:solar-power"),
-    MpptModuleSensorSpec("lifetime_energy", "lifetime_energy", SensorDeviceClass.ENERGY, SensorStateClass.TOTAL_INCREASING, "Wh", "mdi:solar-panel"),
+    MpptModuleSensorSpec("mppt_module_dc_current", "dc_current", SensorDeviceClass.CURRENT, SensorStateClass.MEASUREMENT, "A", "mdi:current-dc"),
+    MpptModuleSensorSpec("mppt_module_dc_voltage", "dc_voltage", SensorDeviceClass.VOLTAGE, SensorStateClass.MEASUREMENT, "V", "mdi:lightning-bolt"),
+    MpptModuleSensorSpec("mppt_module_dc_power", "dc_power", SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, "W", "mdi:solar-power"),
+    MpptModuleSensorSpec("mppt_module_lifetime_energy", "lifetime_energy", SensorDeviceClass.ENERGY, SensorStateClass.TOTAL_INCREASING, "Wh", "mdi:solar-panel"),
 )
 
 INVERTER_SYMO_SENSOR_TYPES = {

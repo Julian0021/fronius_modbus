@@ -399,6 +399,10 @@ def test_sensor_platform_setup_covers_meter_mppt_and_storage_gating() -> None:
     assert "mppt_module_0_dc_current" in keys
     assert "mppt_module_2_dc_current" not in keys
 
+    mppt_sensor = _entity_by_key(entities, "mppt_module_0_dc_current")
+    assert mppt_sensor._attr_translation_key == "mppt_module_dc_current"
+    assert mppt_sensor._attr_translation_placeholders == {"module": "1"}
+
     meter_entity = _entity_by_key(entities, "meter_200_power")
     assert meter_entity._attr_unique_id == "fm_meter_200_power"
     assert meter_entity._attr_device_info == hub.get_device_info_meter(200)

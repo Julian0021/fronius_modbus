@@ -57,6 +57,18 @@ def test_derive_storage_extended_mode_matches_runtime_semantics() -> None:
     assert derive_storage_extended_mode(2, charge_power=-25, discharge_power=100) == (
         StorageExtendedControlMode.DISCHARGE_TO_GRID
     )
+    assert derive_storage_extended_mode(
+        2,
+        charge_power=100,
+        discharge_power=0,
+        charge_grid_enabled=True,
+    ) == (StorageExtendedControlMode.CHARGE_FROM_GRID)
+    assert derive_storage_extended_mode(
+        2,
+        charge_power=100,
+        discharge_power=0,
+        charge_grid_enabled=False,
+    ) == (StorageExtendedControlMode.BLOCK_DISCHARGING)
     assert derive_storage_extended_mode(3, charge_power=100, discharge_power=0) == (
         StorageExtendedControlMode.BLOCK_DISCHARGING
     )

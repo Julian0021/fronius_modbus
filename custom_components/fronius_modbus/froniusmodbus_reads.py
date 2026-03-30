@@ -1183,6 +1183,11 @@ class FroniusModbusReadService:
             raw["storage_control_mode"],
             charge_power=raw["charge_power"],
             discharge_power=raw["discharge_power"],
+            charge_grid_enabled=(
+                raw["charge_grid_set"] == 1
+                if self._facade.is_numeric(raw["charge_grid_set"])
+                else None
+            ),
         )
 
         if ext_control_mode is not None:

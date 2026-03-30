@@ -152,6 +152,7 @@ def derive_storage_extended_mode(
     *,
     charge_power: int | None,
     discharge_power: int | None,
+    charge_grid_enabled: bool | None = None,
 ) -> StorageExtendedControlMode | None:
     """Map raw storage-control registers to the exposed extended mode."""
     if storage_control_mode == 0:
@@ -164,6 +165,8 @@ def derive_storage_extended_mode(
         return StorageExtendedControlMode.CHARGE_FROM_GRID
     if storage_control_mode in (2, 3) and charge_power is not None and charge_power < 0:
         return StorageExtendedControlMode.DISCHARGE_TO_GRID
+    if storage_control_mode == 2 and discharge_power == 0 and charge_grid_enabled:
+        return StorageExtendedControlMode.CHARGE_FROM_GRID
     if storage_control_mode in (2, 3) and discharge_power == 0:
         return StorageExtendedControlMode.BLOCK_DISCHARGING
     if storage_control_mode == 2:

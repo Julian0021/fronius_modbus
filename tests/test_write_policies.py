@@ -52,6 +52,32 @@ class _WriteFacade:
         return 40300 + offset
 
 
+def _build_command_hub(**overrides) -> SimpleNamespace:
+    hub = {
+        "_command_lock": asyncio.Lock(),
+        "_webclient": None,
+        "_client": SimpleNamespace(write_service=SimpleNamespace()),
+        "_web_api_service": SimpleNamespace(),
+        "_publish_data_update": lambda: None,
+        "_as_int": lambda value: int(value) if isinstance(value, int) else None,
+        "_enabled_bool": lambda value: str(value).lower() in {"1", "enabled", "on", "true"},
+        "data": {},
+    }
+    hub.update(overrides)
+    return SimpleNamespace(**hub)
+
+
+def _build_web_api_hub(**overrides) -> SimpleNamespace:
+    hub = {
+        "_command_lock": asyncio.Lock(),
+        "_webclient": None,
+        "_publish_data_update": lambda: None,
+        "data": {},
+    }
+    hub.update(overrides)
+    return SimpleNamespace(**hub)
+
+
 async def test_modbus_write_service_uses_readback_instead_of_cache_mutation() -> None:
     facade = _WriteFacade()
     service = FroniusModbusWriteService(facade)
@@ -113,11 +139,9 @@ async def test_hub_command_service_does_not_optimistically_mutate_api_battery_po
     def _fake_transition(source: str) -> None:
         calls.append(("transition", source))
 
-    hub = SimpleNamespace(
-        _command_lock=asyncio.Lock(),
+    hub = _build_command_hub(
         _webclient=SimpleNamespace(set_battery_config="set_battery_config"),
         data={"api_battery_power": "stale", "api_battery_mode_effective_raw": 1},
-        _as_int=lambda value: int(value) if isinstance(value, int) else None,
         _web_api_service=SimpleNamespace(
             async_web_job=_fake_web_job,
             start_battery_write_transition=_fake_transition,
@@ -151,15 +175,13 @@ async def test_hub_command_service_api_battery_mode_refreshes_and_publishes() ->
     def _fake_transition(source: str) -> None:
         calls.append(("transition", source))
 
-    hub = SimpleNamespace(
-        _command_lock=asyncio.Lock(),
+    hub = _build_command_hub(
         _webclient=SimpleNamespace(set_battery_config="set_battery_config"),
         data={
             "api_battery_mode": "auto",
             "api_battery_mode_effective_raw": 0,
             "soc_minimum": 23,
         },
-        _as_int=lambda value: int(value) if isinstance(value, int) else None,
         _web_api_service=SimpleNamespace(
             async_web_job=_fake_web_job,
             refresh_web_data=_fake_refresh,
@@ -191,8 +213,7 @@ async def test_hub_command_service_set_mode_only_uses_modbus_dispatch() -> None:
     async def _fake_set_extended_mode(mode):
         calls.append(("set_extended_mode", mode))
 
-    hub = SimpleNamespace(
-        _command_lock=asyncio.Lock(),
+    hub = _build_command_hub(
         _client=SimpleNamespace(
             write_service=SimpleNamespace(set_extended_mode=_fake_set_extended_mode)
         ),
@@ -212,8 +233,7 @@ async def test_hub_command_service_set_mode_only_uses_modbus_dispatch() -> None:
 async def test_web_api_toggle_refreshes_and_publishes_without_cache_shortcut() -> None:
     calls: list[tuple | str] = []
 
-    hub = SimpleNamespace(
-        _command_lock=asyncio.Lock(),
+    hub = _build_web_api_hub(
         _webclient=SimpleNamespace(set_solar_api_enabled="set_solar_api_enabled"),
         data={"api_solar_api_enabled": "stale"},
         _publish_data_update=lambda: calls.append("publish"),

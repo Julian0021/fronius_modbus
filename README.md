@@ -44,7 +44,7 @@ If you provide the inverter Web API customer password in the integration setup, 
 - expose authenticated battery controls from `/api/config/batteries`
 - expose Modbus service diagnostics from `/api/config/modbus`
 
-<img width="845" height="604" alt="image" src="https://github.com/user-attachments/assets/8da886fb-30ae-447a-b255-bfc2d61c0485" />
+![solar_login](images/solar_login.jpg?raw=true "storage")
 
 The Web API username is fixed to use the `customer` local login for your inverter. This is the login used when you connect using web browser locally to the inverter by its LAN ip address. This should have been provided by your installer during installation/setup up. This is not the Solar Web login used for the cloud (e.g. https://www.solarweb.com/).
 The integration stores a derived digest token in Home Assistant storage and does not keep the password in the config entry.
@@ -178,6 +178,7 @@ Note to change the mode first then set controls active in that mode.
 
 # Example Devices
 These images are examples, and have recently changed slightly. They will be grouped into two categories one for the inverter, and one for the battery. Previously the WattMeter was shown separately. 
+
 Battery Storage
 ![battery storage](images/example_batterystorage.jpg?raw=true "storage")
 

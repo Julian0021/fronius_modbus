@@ -28,8 +28,7 @@ def test_storage_mode_policy_exposes_select_options_and_web_sync_rules() -> None
     charge_from_grid = get_storage_mode_policy(StorageExtendedControlMode.CHARGE_FROM_GRID)
     assert charge_from_grid is not None
     assert charge_from_grid.modbus_control_mode == 2
-    assert charge_from_grid.web_charge_from_grid is True
-    assert charge_from_grid.web_charge_from_ac is True
+    assert charge_from_grid.default_discharge_limit == 0
 
 
 def test_storage_mode_supports_checks_capabilities_from_shared_policy() -> None:

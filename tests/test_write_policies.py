@@ -139,7 +139,7 @@ async def test_hub_command_service_does_not_optimistically_mutate_api_battery_po
     ]
 
 
-async def test_hub_command_service_uses_shared_mode_policy_for_dispatch() -> None:
+async def test_hub_command_service_set_mode_only_uses_modbus_dispatch() -> None:
     calls: list[tuple | str] = []
 
     async def _fake_set_extended_mode(mode):
@@ -155,22 +155,10 @@ async def test_hub_command_service_uses_shared_mode_policy_for_dispatch() -> Non
     )
     service = HubCommandService(hub)
 
-    async def _fake_set_api_charge_sources(*, charge_from_grid: bool, charge_from_ac: bool):
-        calls.append(
-            (
-                "set_api_charge_sources",
-                charge_from_grid,
-                charge_from_ac,
-            )
-        )
-
-    service._set_api_charge_sources = _fake_set_api_charge_sources  # type: ignore[method-assign]
-
     await service.set_mode(4)
 
     assert calls == [
         ("set_extended_mode", 4),
-        ("set_api_charge_sources", True, True),
         "publish",
     ]
 

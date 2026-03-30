@@ -29,8 +29,6 @@ class StorageModePolicy:
     default_discharge_limit: int
     log_message: str
     capabilities: frozenset[str]
-    web_charge_from_grid: bool | None = None
-    web_charge_from_ac: bool | None = None
 
 
 STORAGE_MODE_POLICIES: dict[StorageExtendedControlMode, StorageModePolicy] = {
@@ -78,8 +76,6 @@ STORAGE_MODE_POLICIES: dict[StorageExtendedControlMode, StorageModePolicy] = {
         default_discharge_limit=0,
         log_message="Charge from grid enabled",
         capabilities=frozenset({STORAGE_MODE_CAPABILITY_GRID_CHARGE_POWER}),
-        web_charge_from_grid=True,
-        web_charge_from_ac=True,
     ),
     StorageExtendedControlMode.DISCHARGE_TO_GRID: StorageModePolicy(
         label="Discharge to Grid",

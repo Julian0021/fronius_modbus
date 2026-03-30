@@ -4,7 +4,6 @@ from __future__ import annotations
 import logging
 from functools import wraps
 
-from .integration_errors import FroniusError
 from .storage_modes import get_storage_mode_policy
 
 _LOGGER = logging.getLogger(__name__)
@@ -164,23 +163,6 @@ class HubCommandService:
             raise ValueError(f"Unsupported storage mode: {mode}")
 
         await self._hub._client.write_service.set_extended_mode(mode)
-        if (
-            self._hub._webclient
-            and policy.web_charge_from_grid is not None
-            and policy.web_charge_from_ac is not None
-        ):
-            try:
-                await self._set_api_charge_sources(
-                    charge_from_grid=policy.web_charge_from_grid,
-                    charge_from_ac=policy.web_charge_from_ac,
-                )
-            except FroniusError as err:
-                _LOGGER.warning(
-                    "Failed syncing Web API charge-source toggles after Modbus mode %s: %s",
-                    mode,
-                    err,
-                )
-
         self._hub._publish_data_update()
 
     @toggle_busy

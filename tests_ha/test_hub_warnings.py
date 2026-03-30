@@ -1,18 +1,18 @@
 from __future__ import annotations
 
-from homeassistant.core import HomeAssistant
 from homeassistant.helpers import issue_registry as ir
+import pytest
 
 from custom_components.fronius_modbus.const import DOMAIN
 from custom_components.fronius_modbus.hub_warnings import HubWarningService
 
 
 class _WarningHub:
-    def __init__(self) -> None:
+    def __init__(self, hass) -> None:
         self.web_api_configured = True
         self.inverter_state = {"i_sw_version": "1.40.0-0"}
         self.web_state = {"api_solar_api_enabled": True}
-        self.hass = HomeAssistant()
+        self.hass = hass
         self.solar_api_warning_issue_id = "solar-api-warning"
         self.warning_entry_id = "entry-1"
         self.warning_entry_title = "Fronius"
@@ -22,8 +22,9 @@ class _WarningHub:
         return (1, 40, 0, 0)
 
 
-async def test_warning_service_uses_public_hub_boundary_for_issue_sync() -> None:
-    hub = _WarningHub()
+@pytest.mark.asyncio
+async def test_warning_service_uses_public_hub_boundary_for_issue_sync(hass) -> None:
+    hub = _WarningHub(hass)
     service = HubWarningService(hub)
 
     await service.async_sync_solar_api_warning()

@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from homeassistant.core import HomeAssistant
-
 from custom_components.fronius_modbus.button import FroniusModbusButton
 from custom_components.fronius_modbus.number import FroniusModbusNumber
 from custom_components.fronius_modbus.platform_setup import entity_description_kwargs
@@ -12,7 +10,7 @@ from custom_components.fronius_modbus.switch import FroniusModbusSwitch
 
 
 def _build_coordinator():
-    hass = HomeAssistant()
+    hass = object()
     hub = SimpleNamespace(entity_prefix="fm", hass=hass)
     coordinator = SimpleNamespace(
         hass=hass,

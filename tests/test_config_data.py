@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from homeassistant.config_entries import ConfigEntry
+from types import SimpleNamespace
+
 from homeassistant.const import CONF_HOST, CONF_NAME
 
 from custom_components.fronius_modbus.config_data import (
@@ -62,7 +63,7 @@ def test_sanitize_config_payload_drops_unknown_keys_and_preserves_supported_ones
 
 
 def test_entry_value_prefers_options_and_form_defaults_only_exposes_user_owned_fields() -> None:
-    entry = ConfigEntry(
+    entry = SimpleNamespace(
         data={
             CONF_NAME: "Data Name",
             CONF_HOST: "data-host",
@@ -88,7 +89,7 @@ def test_entry_value_prefers_options_and_form_defaults_only_exposes_user_owned_f
 
 
 def test_merged_entry_config_drops_legacy_persisted_api_password() -> None:
-    entry = ConfigEntry(
+    entry = SimpleNamespace(
         data={
             CONF_HOST: "inverter.local",
             "api_password": "secret",

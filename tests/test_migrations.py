@@ -2,9 +2,8 @@ from __future__ import annotations
 
 import types
 
-from homeassistant.config_entries import ConfigEntry
-
 from custom_components.fronius_modbus.migrations import async_migrate_entry
+from tests.fakes import make_entry
 
 
 async def test_async_migrate_entry_allows_older_entries_without_rewriting() -> None:
@@ -14,7 +13,7 @@ async def test_async_migrate_entry_allows_older_entries_without_rewriting() -> N
             async_update_entry=lambda entry, **kwargs: updates.append(kwargs)
         )
     )
-    entry = ConfigEntry(
+    entry = make_entry(
         entry_id="entry-1",
         data={"legacy": True},
         options={"legacy_option": True},
@@ -33,7 +32,7 @@ async def test_async_migrate_entry_allows_newer_entry_versions_without_rewriting
             async_update_entry=lambda entry, **kwargs: updates.append(kwargs)
         )
     )
-    entry = ConfigEntry(
+    entry = make_entry(
         entry_id="entry-2",
         data={},
         options={},

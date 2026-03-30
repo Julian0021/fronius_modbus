@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-import types
+from unittest.mock import Mock
 
-from homeassistant.config_entries import ConfigEntry
 import pytest
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.fronius_modbus.config_data import form_setting_defaults
+from custom_components.fronius_modbus.const import DOMAIN
 from custom_components.fronius_modbus.flow_steps import entry_defaults
 from custom_components.fronius_modbus.integration_errors import (
     FroniusAuthError,
@@ -19,15 +20,20 @@ from custom_components.fronius_modbus.repairs import (
 )
 
 
-async def test_reconfigure_repair_uses_form_defaults(monkeypatch) -> None:
+@pytest.mark.asyncio
+async def test_reconfigure_repair_uses_form_defaults(
+    hass,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     flow = FroniusReconfigureRepairFlow("entry-1")
-    entry = ConfigEntry(
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        entry_id="entry-1",
         data={"host": "data-host", "scan_interval": 10},
         options={"host": "options-host", "scan_interval": 15},
     )
-    flow.hass = types.SimpleNamespace(
-        config_entries=types.SimpleNamespace(async_get_entry=lambda _entry_id: entry)
-    )
+    entry.add_to_hass(hass)
+    flow.hass = hass
 
     captured: dict[str, object] = {}
 
@@ -45,12 +51,15 @@ async def test_reconfigure_repair_uses_form_defaults(monkeypatch) -> None:
     assert captured["base_settings"] == defaults
 
 
-async def test_reconfigure_repair_applies_modbus_config_before_updating_entry(monkeypatch) -> None:
+@pytest.mark.asyncio
+async def test_reconfigure_repair_applies_modbus_config_before_updating_entry(
+    hass,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     flow = FroniusReconfigureRepairFlow("entry-1")
-    entry = ConfigEntry(entry_id="entry-1")
-    flow.hass = types.SimpleNamespace(
-        config_entries=types.SimpleNamespace(async_get_entry=lambda _entry_id: entry)
-    )
+    entry = MockConfigEntry(domain=DOMAIN, entry_id="entry-1")
+    entry.add_to_hass(hass)
+    flow.hass = hass
 
     calls: dict[str, object] = {}
 
@@ -70,8 +79,8 @@ async def test_reconfigure_repair_applies_modbus_config_before_updating_entry(mo
     )
     monkeypatch.setattr(repairs_module, "async_update_entry_from_input", _fake_update)
 
-    resolved: list[bool] = []
-    monkeypatch.setattr(flow, "_resolve_issue", lambda: resolved.append(True))
+    resolve_issue = Mock()
+    monkeypatch.setattr(flow, "_resolve_issue", resolve_issue)
     monkeypatch.setattr(
         flow,
         "async_create_entry",
@@ -92,9 +101,10 @@ async def test_reconfigure_repair_applies_modbus_config_before_updating_entry(mo
     assert calls["updated_entry"] is entry
     assert calls["updated_settings"] == settings
     assert calls["previous_host"] == "old-host"
-    assert resolved == [True]
+    resolve_issue.assert_called_once_with()
 
 
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("error", "expected_error"),
     [
@@ -107,12 +117,13 @@ async def test_reconfigure_repair_applies_modbus_config_before_updating_entry(mo
     ],
 )
 async def test_disable_solar_api_repair_maps_specific_errors(
-    monkeypatch,
+    hass,
+    monkeypatch: pytest.MonkeyPatch,
     error,
     expected_error: str,
 ) -> None:
     flow = FroniusDisableSolarApiRepairFlow("entry-1")
-    flow.hass = types.SimpleNamespace()
+    flow.hass = hass
 
     async def _raise_finish():
         raise error

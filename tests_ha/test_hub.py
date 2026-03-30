@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from datetime import timedelta
 
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
 import pytest
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+from custom_components.fronius_modbus.const import DOMAIN
 import custom_components.fronius_modbus.hub as hub_module
 from custom_components.fronius_modbus.hub import FroniusCoordinator
 
@@ -27,41 +27,51 @@ class _HubWithRuntimeService:
         self.runtime_service = _RuntimeService()
 
 
-async def test_coordinator_refreshes_via_runtime_service() -> None:
+@pytest.mark.asyncio
+async def test_coordinator_refreshes_via_runtime_service(hass) -> None:
     hub = _HubWithRuntimeService()
 
-    coordinator = FroniusCoordinator(HomeAssistant(), hub)
+    coordinator = FroniusCoordinator(hass, hub)
     result = await coordinator._async_update_data()
 
     assert result == {"ok": True}
     assert hub.runtime_service.calls == 1
 
 
-def test_coordinator_passes_config_entry_when_supported(monkeypatch) -> None:
+def test_coordinator_passes_config_entry_when_supported(
+    hass,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     hub = _HubWithRuntimeService()
-    config_entry = ConfigEntry(entry_id="entry-1")
+    config_entry = MockConfigEntry(domain=DOMAIN)
 
     monkeypatch.setattr(hub_module, "_coordinator_init_supports_config_entry", lambda: True)
 
-    coordinator = FroniusCoordinator(HomeAssistant(), hub, config_entry=config_entry)
+    coordinator = FroniusCoordinator(hass, hub, config_entry=config_entry)
 
     assert coordinator.config_entry is config_entry
 
 
-def test_coordinator_skips_config_entry_when_not_supported(monkeypatch) -> None:
+def test_coordinator_skips_config_entry_when_not_supported(
+    hass,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     hub = _HubWithRuntimeService()
-    config_entry = ConfigEntry(entry_id="entry-1")
+    config_entry = MockConfigEntry(domain=DOMAIN)
 
     monkeypatch.setattr(hub_module, "_coordinator_init_supports_config_entry", lambda: False)
 
-    coordinator = FroniusCoordinator(HomeAssistant(), hub, config_entry=config_entry)
+    coordinator = FroniusCoordinator(hass, hub, config_entry=config_entry)
 
     assert coordinator.config_entry is None
 
 
-def test_coordinator_does_not_mask_constructor_type_errors(monkeypatch) -> None:
+def test_coordinator_does_not_mask_constructor_type_errors(
+    hass,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     hub = _HubWithRuntimeService()
-    config_entry = ConfigEntry(entry_id="entry-1")
+    config_entry = MockConfigEntry(domain=DOMAIN)
 
     def _raise_type_error(self, hass, logger, **kwargs) -> None:
         raise TypeError(f"bad kwargs: {sorted(kwargs)}")
@@ -70,4 +80,4 @@ def test_coordinator_does_not_mask_constructor_type_errors(monkeypatch) -> None:
     monkeypatch.setattr(hub_module.DataUpdateCoordinator, "__init__", _raise_type_error)
 
     with pytest.raises(TypeError, match="bad kwargs"):
-        FroniusCoordinator(HomeAssistant(), hub, config_entry=config_entry)
+        FroniusCoordinator(hass, hub, config_entry=config_entry)

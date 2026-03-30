@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from homeassistant.core import HomeAssistant
 import pytest
 
 import custom_components.fronius_modbus.hub_bootstrap as hub_bootstrap_module
@@ -11,6 +10,7 @@ from custom_components.fronius_modbus.hub_bootstrap import (
     check_pymodbus_version,
 )
 from custom_components.fronius_modbus.integration_errors import FroniusDependencyError
+from tests.fakes import FakeHass
 
 
 class _BootstrapClient:
@@ -64,7 +64,7 @@ class _BootstrapHub:
         web_api_configured: bool = True,
     ) -> None:
         self._calls = calls
-        self._hass = HomeAssistant()
+        self._hass = FakeHass()
         self._config_entry = None
         self._auto_enable_modbus = False
         self._host = "inverter.local"

@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import types
 
-from homeassistant.config_entries import ConfigEntry
-
 from custom_components.fronius_modbus.const import CONF_RECONFIGURE_REQUIRED
 import custom_components.fronius_modbus.entry_reconfigure as entry_reconfigure
+from tests.fakes import make_entry
 
 
 async def test_async_prepare_entry_token_sets_reconfigure_required_without_token(
@@ -17,7 +16,7 @@ async def test_async_prepare_entry_token_sets_reconfigure_required_without_token
             async_update_entry=lambda entry, **kwargs: updates.append(kwargs)
         )
     )
-    entry = ConfigEntry(entry_id="entry-1", data={}, options={})
+    entry = make_entry(entry_id="entry-1", data={}, options={})
 
     class _TokenStore:
         async def async_load_token(self, host, username):
@@ -51,7 +50,7 @@ async def test_async_sync_reconfigure_issue_deletes_issue_when_not_needed(
 ) -> None:
     deleted: list[tuple[object, str, str]] = []
     hass = object()
-    entry = ConfigEntry(
+    entry = make_entry(
         entry_id="entry-1",
         title="Inverter",
         data={CONF_RECONFIGURE_REQUIRED: False},

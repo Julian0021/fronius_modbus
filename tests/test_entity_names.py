@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-from homeassistant.core import HomeAssistant
-
 import custom_components.fronius_modbus.entity_names as entity_names
+from tests.fakes import FakeHass
 
 
 def test_resolve_cached_entity_name_formats_placeholders(monkeypatch) -> None:
-    hass = HomeAssistant()
+    hass = FakeHass()
 
     monkeypatch.setattr(
         entity_names,
@@ -32,7 +31,7 @@ def test_resolve_cached_entity_name_formats_placeholders(monkeypatch) -> None:
 
 
 async def test_async_resolve_entity_name_uses_fallback_when_missing(monkeypatch) -> None:
-    hass = HomeAssistant()
+    hass = FakeHass()
 
     async def _fake_async_get_translation_data(_hass, _language):
         return {}

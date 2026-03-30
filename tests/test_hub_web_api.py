@@ -2,13 +2,12 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from homeassistant.core import HomeAssistant
-
 from custom_components.fronius_modbus.const import API_USERNAME
 from custom_components.fronius_modbus.froniuswebclient import FroniusWebAuthError
 import custom_components.fronius_modbus.hub_web_api as hub_web_api_module
 from custom_components.fronius_modbus.hub_web_api import HubWebApiService
 from custom_components.fronius_modbus.runtime_state import FroniusRuntimeState
+from tests.fakes import FakeHass
 
 
 def _enabled_bool(value) -> bool:
@@ -28,7 +27,7 @@ def _build_hub() -> tuple[SimpleNamespace, list[tuple[str, str]], list[str]]:
         warning_calls.append("sync")
 
     hub = SimpleNamespace(
-        _hass=HomeAssistant(),
+        _hass=FakeHass(),
         _host="inverter.local",
         _name="Fronius",
         _webclient=SimpleNamespace(

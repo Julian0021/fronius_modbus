@@ -38,9 +38,18 @@ For the local CI checks, install the shared dev dependencies and run:
 
 ```bash
 python -m pip install -r requirements-dev.txt
-python -m ruff check custom_components tests
+python -m ruff check custom_components tests tests_ha
 pytest -q
 ```
+
+For a second test path that uses the real Home Assistant package instead of the local stubs, install the Home Assistant test dependencies and run:
+
+```bash
+python -m pip install -r requirements-dev-ha.txt
+pytest -q tests_ha
+```
+
+A ready-to-use devcontainer is included in [.devcontainer/devcontainer.json](/home/julian/fronius_modbus/.devcontainer/devcontainer.json).
 
 ## Inverter Setup
 

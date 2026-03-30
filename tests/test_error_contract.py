@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from homeassistant.core import HomeAssistant
 import pytest
 from requests import RequestException
 
@@ -17,10 +16,11 @@ from custom_components.fronius_modbus.integration_errors import (
     FroniusAuthError,
     FroniusConnectionError,
 )
+from tests.fakes import FakeHass
 
 
 async def test_async_mint_token_maps_auth_failures_to_invalid_credentials(monkeypatch) -> None:
-    hass = HomeAssistant()
+    hass = FakeHass()
 
     def _raise_auth(*_args, **_kwargs):
         raise FroniusWebAuthError("bad credentials")
@@ -32,7 +32,7 @@ async def test_async_mint_token_maps_auth_failures_to_invalid_credentials(monkey
 
 
 async def test_async_mint_token_maps_request_failures_to_cannot_connect(monkeypatch) -> None:
-    hass = HomeAssistant()
+    hass = FakeHass()
 
     def _raise_request(*_args, **_kwargs):
         raise RequestException("network down")
@@ -45,7 +45,7 @@ async def test_async_mint_token_maps_request_failures_to_cannot_connect(monkeypa
 
 async def test_validate_web_api_wraps_request_failures() -> None:
     hub = SimpleNamespace(
-        _hass=HomeAssistant(),
+        _hass=FakeHass(),
         _webclient=SimpleNamespace(
             login=lambda: (_ for _ in ()).throw(RequestException("timeout"))
         ),
@@ -58,7 +58,7 @@ async def test_validate_web_api_wraps_request_failures() -> None:
 
 async def test_validate_web_api_wraps_auth_failures() -> None:
     hub = SimpleNamespace(
-        _hass=HomeAssistant(),
+        _hass=FakeHass(),
         _webclient=SimpleNamespace(
             login=lambda: (_ for _ in ()).throw(FroniusWebAuthError("401"))
         ),
@@ -72,7 +72,7 @@ async def test_validate_web_api_wraps_auth_failures() -> None:
 async def test_async_web_job_wraps_request_failures() -> None:
     service = HubWebApiService(
         SimpleNamespace(
-            _hass=HomeAssistant(),
+            _hass=FakeHass(),
             _webclient=object(),
         )
     )

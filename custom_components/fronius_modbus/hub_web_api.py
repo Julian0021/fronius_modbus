@@ -9,7 +9,13 @@ from typing import Any
 from homeassistant.helpers import issue_registry as ir
 from requests import RequestException
 
-from .const import API_USERNAME, DOMAIN, MIGRATION_RECONFIGURE_ISSUE_ID_PREFIX
+from .const import (
+    API_BATTERY_MODE,
+    API_SOC_MODE,
+    API_USERNAME,
+    DOMAIN,
+    MIGRATION_RECONFIGURE_ISSUE_ID_PREFIX,
+)
 from .froniuswebclient import FroniusWebAuthError
 from .hub_commands import toggle_busy
 from .integration_errors import (
@@ -22,29 +28,6 @@ from .token_store import async_get_token_store
 
 _LOGGER = logging.getLogger(__name__)
 
-WEB_API_DATA_KEYS = (
-    "inverter_temperature",
-    "api_modbus_mode",
-    "api_modbus_control",
-    "api_modbus_sunspec_mode",
-    "api_modbus_restriction",
-    "api_modbus_restriction_ip",
-    "api_solar_api_enabled",
-    "storage_temperature",
-    "api_battery_mode_raw",
-    "api_battery_mode_effective_raw",
-    "api_battery_mode_consistent",
-    "api_battery_mode",
-    "api_battery_power",
-    "api_soc_mode_raw",
-    "api_soc_mode",
-    "api_soc_min",
-    "soc_maximum",
-    "api_backup_reserved",
-    "api_charge_from_ac",
-    "api_charge_from_grid",
-)
-
 BATTERY_WRITE_MODBUS_RECOVERY_SECONDS = 30.0
 BATTERY_WRITE_WEB_REFRESH_DELAY_SECONDS = 10.0
 
@@ -54,6 +37,8 @@ class HubWebApiService:
 
     def __init__(self, hub) -> None:
         self._hub = hub
+        self._clearable_web_state_keys: set[str] = set()
+        self._clearable_storage_state_keys: set[str] = set()
 
     async def validate_web_api(self) -> bool:
         if not self._hub._webclient:
@@ -88,8 +73,18 @@ class HubWebApiService:
             await asyncio.sleep(1.0)
 
     def _clear_web_api_data(self) -> None:
-        for key in WEB_API_DATA_KEYS:
-            self._hub.data[key] = None
+        for key in self._clearable_web_state_keys:
+            self._hub.web_state.set(key, None)
+        for key in self._clearable_storage_state_keys:
+            self._hub.storage_state.set(key, None)
+
+    def _set_clearable_web_value(self, key: str, value: Any) -> None:
+        self._clearable_web_state_keys.add(key)
+        self._hub.web_state.set(key, value)
+
+    def _set_clearable_storage_value(self, key: str, value: Any) -> None:
+        self._clearable_storage_state_keys.add(key)
+        self._hub.storage_state.set(key, value)
 
     def _schedule_delayed_web_refresh(self) -> None:
         if (
@@ -205,28 +200,42 @@ class HubWebApiService:
         raw_soc_mode = raw_soc_mode.lower() if isinstance(raw_soc_mode, str) else None
 
         effective_mode = self._hub._derive_api_battery_mode(raw_mode, raw_soc_mode)
-        self._hub._set_effective_api_battery_mode(raw_mode, raw_soc_mode)
-        self._hub.web_state.set(
+        self._set_clearable_web_value("api_battery_mode_raw", raw_mode)
+        self._set_clearable_web_value("api_battery_mode_effective_raw", effective_mode)
+        self._set_clearable_web_value(
+            "api_battery_mode_consistent",
+            effective_mode is not None,
+        )
+        self._set_clearable_web_value(
+            "api_battery_mode",
+            API_BATTERY_MODE.get(effective_mode) if effective_mode is not None else None,
+        )
+        self._set_clearable_web_value("api_soc_mode_raw", raw_soc_mode)
+        self._set_clearable_web_value(
+            "api_soc_mode",
+            API_SOC_MODE.get(raw_soc_mode, raw_soc_mode),
+        )
+        self._set_clearable_web_value(
             "api_battery_power",
             -raw_power if raw_power is not None else None,
         )
         api_soc_min = self._hub._as_int(battery_config.get("BAT_M0_SOC_MIN"))
-        self._hub.web_state.set("api_soc_min", api_soc_min)
-        self._hub.web_state.set(
+        self._set_clearable_web_value("api_soc_min", api_soc_min)
+        self._set_clearable_web_value(
             "soc_maximum",
             self._hub._as_int(battery_config.get("BAT_M0_SOC_MAX")),
         )
-        self._hub.web_state.set(
+        self._set_clearable_web_value(
             "api_backup_reserved",
             self._hub._as_int(battery_config.get("HYB_BACKUP_RESERVED")),
         )
         if effective_mode == 1 and api_soc_min is not None:
             self._hub.storage_state.set("soc_minimum", api_soc_min)
-        self._hub.web_state.set(
+        self._set_clearable_web_value(
             "api_charge_from_ac",
             self._hub._enabled_bool(battery_config.get("HYB_BM_CHARGEFROMAC")),
         )
-        self._hub.web_state.set(
+        self._set_clearable_web_value(
             "api_charge_from_grid",
             self._hub._enabled_bool(battery_config.get("HYB_EVU_CHARGEFROMGRID")),
         )
@@ -237,20 +246,20 @@ class HubWebApiService:
         restriction = ctr.get("restriction") or {}
         mode = slave.get("mode")
 
-        self._hub.web_state.set(
+        self._set_clearable_web_value(
             "api_modbus_mode",
             str(mode).upper() if mode is not None else None,
         )
-        self._hub.web_state.set(
+        self._set_clearable_web_value(
             "api_modbus_control",
             self._hub._enabled_state(ctr.get("on")),
         )
-        self._hub.web_state.set("api_modbus_sunspec_mode", slave.get("sunspecMode"))
-        self._hub.web_state.set(
+        self._set_clearable_web_value("api_modbus_sunspec_mode", slave.get("sunspecMode"))
+        self._set_clearable_web_value(
             "api_modbus_restriction",
             self._hub._enabled_state(restriction.get("on")),
         )
-        self._hub.web_state.set("api_modbus_restriction_ip", restriction.get("ip"))
+        self._set_clearable_web_value("api_modbus_restriction_ip", restriction.get("ip"))
 
     async def refresh_web_data(self) -> None:
         """Refresh cached Web API state without changing device settings."""
@@ -262,12 +271,12 @@ class HubWebApiService:
             self._hub._webclient.get_inverter_info,
         )
         if isinstance(inverter_info, dict):
-            self._hub.web_state.set(
+            self._set_clearable_web_value(
                 "inverter_temperature",
                 inverter_info.get("temperature"),
             )
         else:
-            self._hub.web_state.set("inverter_temperature", None)
+            self._set_clearable_web_value("inverter_temperature", None)
 
         modbus_config = await self.async_web_job(self._hub._webclient.get_modbus_config)
         if isinstance(modbus_config, dict):
@@ -278,12 +287,12 @@ class HubWebApiService:
         )
         if isinstance(solar_api_config, dict):
             enabled = solar_api_config.get("SolarAPIv1Enabled")
-            self._hub.web_state.set(
+            self._set_clearable_web_value(
                 "api_solar_api_enabled",
                 self._hub._enabled_bool(enabled) if enabled is not None else None
             )
         else:
-            self._hub.web_state.set("api_solar_api_enabled", None)
+            self._set_clearable_web_value("api_solar_api_enabled", None)
 
         if self._hub.storage_configured:
             storage_info = await self._async_optional_web_read(
@@ -291,12 +300,12 @@ class HubWebApiService:
                 self._hub._webclient.get_storage_info,
             )
             if isinstance(storage_info, dict):
-                self._hub.storage_state.set(
+                self._set_clearable_storage_value(
                     "storage_temperature",
                     storage_info.get("cell_temperature"),
                 )
             else:
-                self._hub.storage_state.set("storage_temperature", None)
+                self._set_clearable_storage_value("storage_temperature", None)
 
             battery_config = await self.async_web_job(
                 self._hub._webclient.get_battery_config

@@ -7,7 +7,6 @@ from homeassistant.const import CONF_HOST, CONF_NAME, CONF_PORT, CONF_SCAN_INTER
 
 from .const import (
     API_USERNAME,
-    CONF_API_PASSWORD,
     CONF_API_USERNAME,
     CONF_AUTO_ENABLE_MODBUS,
     CONF_INVERTER_UNIT_ID,
@@ -47,7 +46,7 @@ _DEFAULT_CONFIG_PAYLOAD = {
     CONF_RECONFIGURE_REQUIRED: False,
 }
 
-SUPPORTED_CONFIG_KEYS = frozenset((*_DEFAULT_CONFIG_PAYLOAD, CONF_API_PASSWORD))
+SUPPORTED_CONFIG_KEYS = frozenset(_DEFAULT_CONFIG_PAYLOAD)
 
 
 def default_config_payload() -> dict[str, Any]:

@@ -415,7 +415,7 @@ INVERTER_API_BUTTON_TYPES = (
     ),
 )
 
-ENTITY_DESCRIPTOR_COLLECTIONS: tuple[tuple[Any, ...], ...] = (
+INTERACTIVE_DESCRIPTOR_COLLECTIONS: tuple[tuple[Any, ...], ...] = (
     STORAGE_MODBUS_SELECT_TYPES,
     STORAGE_API_SELECT_TYPES,
     STORAGE_API_SWITCH_TYPES,
@@ -551,3 +551,18 @@ STORAGE_SENSOR_TYPES = {
     "MaxChaRte": SensorEntitySpec("maxcharte", "MaxChaRte", SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, "W", entity_category=EntityCategory.DIAGNOSTIC),
     "MaxDisChaRte": SensorEntitySpec("maxdischarte", "MaxDisChaRte", SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, "W", entity_category=EntityCategory.DIAGNOSTIC),
 }
+
+SENSOR_DESCRIPTOR_COLLECTIONS: tuple[tuple[Any, ...], ...] = (
+    tuple(INVERTER_SENSOR_TYPES.values()),
+    tuple(INVERTER_WEB_SENSOR_TYPES.values()),
+    MPPT_MODULE_SENSOR_TYPES,
+    tuple(INVERTER_SYMO_SENSOR_TYPES.values()),
+    tuple(INVERTER_STORAGE_SENSOR_TYPES.values()),
+    tuple(METER_SENSOR_TYPES.values()),
+    tuple(STORAGE_SENSOR_TYPES.values()),
+)
+
+ENTITY_DESCRIPTOR_COLLECTIONS: tuple[tuple[Any, ...], ...] = (
+    *INTERACTIVE_DESCRIPTOR_COLLECTIONS,
+    *SENSOR_DESCRIPTOR_COLLECTIONS,
+)

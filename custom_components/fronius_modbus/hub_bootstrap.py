@@ -68,6 +68,8 @@ def check_pymodbus_version() -> None:
 class MeterTopologyDiscovery:
     """Normalized meter metadata discovered during bootstrap."""
 
+    unit_ids: list[int] | None = None
+    primary_unit_id: int | None = None
     phase_counts: dict[int, int] = field(default_factory=dict)
     locations: dict[int, int] = field(default_factory=dict)
 
@@ -88,6 +90,7 @@ class HubBootstrapService:
         await self._async_check_dependencies()
         await self._async_apply_modbus_config(apply_modbus_config)
         meter_topology = await self._async_discover_meter_topology()
+        self._apply_effective_meter_topology(meter_topology)
         await self._hub._client.runtime_service.init_data()
         self._apply_meter_topology(meter_topology)
         self._warn_missing_primary_meter()
@@ -135,10 +138,15 @@ class HubBootstrapService:
         if not isinstance(meter_info, dict):
             return discovery
 
-        self._hub._client.set_meter_unit_ids(
+        discovery.unit_ids, discovery.primary_unit_id = self._coerce_meter_topology(
             meter_info.get("unit_ids"),
-            primary_unit_id=meter_info.get("primary_unit_id"),
+            meter_info.get("primary_unit_id"),
         )
+        if discovery.unit_ids is None:
+            _LOGGER.debug(
+                "Ignoring malformed PowerMeter topology for %s and keeping existing smart meter unit ids",
+                self._hub._host,
+            )
         discovery.phase_counts = self._coerce_positive_int_map(
             meter_info.get("phase_counts_by_unit_id"),
         )
@@ -146,6 +154,37 @@ class HubBootstrapService:
             meter_info.get("locations_by_unit_id"),
         )
         return discovery
+
+    def _coerce_meter_topology(
+        self,
+        raw_unit_ids,
+        raw_primary_unit_id,
+    ) -> tuple[list[int] | None, int | None]:
+        unit_ids = self._coerce_positive_int_list(raw_unit_ids)
+        if not unit_ids:
+            return None, None
+
+        primary_unit_id = None
+        if self._hub._client.is_numeric(raw_primary_unit_id):
+            normalized_primary_unit_id = int(raw_primary_unit_id)
+            if normalized_primary_unit_id in unit_ids:
+                primary_unit_id = normalized_primary_unit_id
+        return unit_ids, primary_unit_id
+
+    def _coerce_positive_int_list(self, raw_values) -> list[int]:
+        values: list[int] = []
+        seen: set[int] = set()
+        if not isinstance(raw_values, (list, tuple)):
+            return values
+        for raw_value in raw_values:
+            if not self._hub._client.is_numeric(raw_value):
+                continue
+            value = int(raw_value)
+            if value <= 0 or value in seen:
+                continue
+            seen.add(value)
+            values.append(value)
+        return values
 
     def _coerce_positive_int_map(self, raw_values) -> dict[int, int]:
         values: dict[int, int] = {}
@@ -189,6 +228,15 @@ class HubBootstrapService:
             location = discovery.locations.get(unit_id)
             if location is not None:
                 self._hub.set_meter_value(unit_id, "location", location)
+
+    def _apply_effective_meter_topology(self, discovery: MeterTopologyDiscovery) -> None:
+        if discovery.unit_ids is None:
+            return
+
+        self._hub._client.set_meter_unit_ids(
+            discovery.unit_ids,
+            primary_unit_id=discovery.primary_unit_id,
+        )
 
     def _warn_missing_primary_meter(self) -> None:
         if (

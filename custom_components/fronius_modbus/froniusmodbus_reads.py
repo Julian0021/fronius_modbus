@@ -69,7 +69,7 @@ from .froniusmodbusclient_const import (
     SUNSPEC_STORAGE_MODEL_ID,
 )
 from .integration_errors import FroniusError, FroniusReadError
-from .storage_modes import StorageExtendedControlMode, derive_storage_extended_mode
+from .storage_modes import derive_storage_mode_readback
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -1136,30 +1136,24 @@ class FroniusModbusReadService:
             if self._facade.is_numeric(raw["charge_grid_set"])
             else None
         )
-        ext_control_mode = derive_storage_extended_mode(
+        storage_state = derive_storage_mode_readback(
             raw["storage_control_mode"],
             charge_power=raw["charge_power"],
             discharge_power=raw["discharge_power"],
             charge_grid_enabled=charge_grid_enabled,
+            control_mode_label=self._facade._map_value(
+                STORAGE_CONTROL_MODE,
+                raw["storage_control_mode"],
+                "storage control mode",
+            ),
+            charge_status_label=self._facade._map_value(
+                CHARGE_STATUS,
+                raw["charge_status"],
+                "charge status",
+            ),
         )
 
-        charge_status = self._facade._map_value(
-            CHARGE_STATUS,
-            raw["charge_status"],
-            "charge status",
-        )
-        if (
-            ext_control_mode == StorageExtendedControlMode.CHARGE_FROM_GRID
-            and charge_status == "discharging"
-        ):
-            charge_status = "charging"
-        if (
-            ext_control_mode == StorageExtendedControlMode.DISCHARGE_TO_GRID
-            and charge_status == "charging"
-        ):
-            charge_status = "discharging"
-
-        self._facade.data["charge_status"] = charge_status
+        self._facade.data["charge_status"] = storage_state.charge_status_label
         self._facade.data["soc_minimum"] = soc_minimum_value
         self._facade._set_calculated(
             "discharging_power",
@@ -1182,43 +1176,19 @@ class FroniusModbusReadService:
         self._facade._set_calculated("WChaGra", raw["WChaGra"], 0, 0)
         self._facade._set_calculated("WDisChaGra", raw["WDisChaGra"], 0, 0)
 
-        mapped_control_mode = self._facade._map_value(
-            STORAGE_CONTROL_MODE,
-            raw["storage_control_mode"],
-            "storage control mode",
-        )
-        if (
-            ext_control_mode == StorageExtendedControlMode.CHARGE_FROM_GRID
-            and mapped_control_mode == "discharge"
-        ):
-            mapped_control_mode = "charge"
-        if (
-            ext_control_mode == StorageExtendedControlMode.DISCHARGE_TO_GRID
-            and mapped_control_mode == "charge"
-        ):
-            mapped_control_mode = "discharge"
-        if raw["discharge_power"] >= 0:
-            self._facade.data["discharge_limit"] = raw["discharge_power"] / 100.0
-            self._facade.data["grid_charge_power"] = 0
-        else:
-            self._facade.data["grid_charge_power"] = (raw["discharge_power"] * -1) / 100.0
-            self._facade.data["discharge_limit"] = 0
-        if raw["charge_power"] >= 0:
-            self._facade.data["charge_limit"] = raw["charge_power"] / 100
-            self._facade.data["grid_discharge_power"] = 0
-        else:
-            self._facade.data["grid_discharge_power"] = (raw["charge_power"] * -1) / 100.0
-            self._facade.data["charge_limit"] = 0
+        self._facade.data["discharge_limit"] = storage_state.discharge_limit
+        self._facade.data["grid_charge_power"] = storage_state.grid_charge_power
+        self._facade.data["charge_limit"] = storage_state.charge_limit
+        self._facade.data["grid_discharge_power"] = storage_state.grid_discharge_power
+        self._facade.data["control_mode"] = storage_state.control_mode_label
 
-        self._facade.data["control_mode"] = mapped_control_mode
-
-        if ext_control_mode is not None:
+        if storage_state.extended_mode is not None:
             self._facade.data["ext_control_mode"] = self._facade._map_value(
                 STORAGE_EXT_CONTROL_MODE,
-                int(ext_control_mode),
+                int(storage_state.extended_mode),
                 "extended storage mode",
             )
-            self._facade.storage_extended_control_mode = int(ext_control_mode)
+            self._facade.storage_extended_control_mode = int(storage_state.extended_mode)
 
         return True
 

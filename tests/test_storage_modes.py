@@ -10,6 +10,7 @@ from custom_components.fronius_modbus.storage_modes import (
     STORAGE_MODE_OPTIONS,
     StorageExtendedControlMode,
     derive_storage_extended_mode,
+    derive_storage_mode_readback,
     get_storage_mode_policy,
     storage_mode_supports,
     storage_modes_for_capability,
@@ -131,3 +132,41 @@ def test_derive_storage_extended_mode_preserves_legacy_grid_mode_signatures() ->
     assert derive_storage_extended_mode(1, charge_power=-25, discharge_power=100) == (
         StorageExtendedControlMode.DISCHARGE_TO_GRID
     )
+
+
+def test_derive_storage_mode_readback_normalizes_charge_from_grid_state() -> None:
+    readback = derive_storage_mode_readback(
+        2,
+        charge_power=100,
+        discharge_power=-25,
+        charge_grid_enabled=True,
+        control_mode_label="discharge",
+        charge_status_label="discharging",
+    )
+
+    assert readback.extended_mode == StorageExtendedControlMode.CHARGE_FROM_GRID
+    assert readback.control_mode_label == "charge"
+    assert readback.charge_status_label == "charging"
+    assert readback.charge_limit == 1.0
+    assert readback.discharge_limit == 0.0
+    assert readback.grid_charge_power == 0.25
+    assert readback.grid_discharge_power == 0.0
+
+
+def test_derive_storage_mode_readback_normalizes_discharge_to_grid_state() -> None:
+    readback = derive_storage_mode_readback(
+        1,
+        charge_power=-25,
+        discharge_power=100,
+        charge_grid_enabled=False,
+        control_mode_label="charge",
+        charge_status_label="charging",
+    )
+
+    assert readback.extended_mode == StorageExtendedControlMode.DISCHARGE_TO_GRID
+    assert readback.control_mode_label == "discharge"
+    assert readback.charge_status_label == "discharging"
+    assert readback.charge_limit == 0.0
+    assert readback.discharge_limit == 1.0
+    assert readback.grid_charge_power == 0.0
+    assert readback.grid_discharge_power == 0.25

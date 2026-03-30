@@ -11,7 +11,6 @@ from custom_components.fronius_modbus.config_data import (
 )
 from custom_components.fronius_modbus.const import (
     API_USERNAME,
-    CONF_API_PASSWORD,
     CONF_INVERTER_UNIT_ID,
     CONF_METER_UNIT_ID,
     CONF_METER_UNIT_IDS,
@@ -24,11 +23,11 @@ from custom_components.fronius_modbus.const import (
 )
 
 
-def test_sanitize_config_payload_keeps_password_and_removes_legacy_meter_keys() -> None:
+def test_sanitize_config_payload_drops_password_and_removes_legacy_meter_keys() -> None:
     payload = sanitize_config_payload(
         {
             CONF_HOST: "inverter.local",
-            CONF_API_PASSWORD: "secret",
+            "api_password": "secret",
             CONF_METER_UNIT_ID: 240,
             CONF_METER_UNIT_IDS: [240, 241],
             CONF_RECONFIGURE_REQUIRED: True,
@@ -36,7 +35,7 @@ def test_sanitize_config_payload_keeps_password_and_removes_legacy_meter_keys() 
     )
 
     assert payload[CONF_HOST] == "inverter.local"
-    assert payload[CONF_API_PASSWORD] == "secret"
+    assert "api_password" not in payload
     assert payload["api_username"] == API_USERNAME
     assert CONF_METER_UNIT_ID not in payload
     assert CONF_METER_UNIT_IDS not in payload
@@ -49,14 +48,14 @@ def test_sanitize_config_payload_drops_unknown_keys_and_preserves_supported_ones
     payload = sanitize_config_payload(
         {
             CONF_HOST: "inverter.local",
-            CONF_API_PASSWORD: "secret",
+            "api_password": "secret",
             "scan_intervall": 42,
             "typoed_flag": True,
         }
     )
 
     assert payload[CONF_HOST] == "inverter.local"
-    assert payload[CONF_API_PASSWORD] == "secret"
+    assert "api_password" not in payload
     assert payload["scan_interval"] == DEFAULT_SCAN_INTERVAL
     assert "scan_intervall" not in payload
     assert "typoed_flag" not in payload
@@ -86,6 +85,21 @@ def test_entry_value_prefers_options_and_form_defaults_only_exposes_user_owned_f
         "scan_interval": 15,
         CONF_RESTRICT_MODBUS_TO_THIS_IP: True,
     }
+
+
+def test_merged_entry_config_drops_legacy_persisted_api_password() -> None:
+    entry = ConfigEntry(
+        data={
+            CONF_HOST: "inverter.local",
+            "api_password": "secret",
+        },
+        options={},
+    )
+
+    merged = merged_entry_config(entry)
+
+    assert merged[CONF_HOST] == "inverter.local"
+    assert "api_password" not in merged
 
 
 def test_storage_charge_status_descriptor_keeps_diagnostic_category() -> None:

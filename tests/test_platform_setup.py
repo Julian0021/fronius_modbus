@@ -292,6 +292,43 @@ def test_entity_description_kwargs_reject_invalid_descriptor_behavior_strings(
         )
 
 
+@pytest.mark.parametrize(
+    ("description", "message"),
+    [
+        (
+            SimpleNamespace(
+                translation_key="invalid_sensor_options",
+                key="invalid_sensor_options",
+                device_class=None,
+                state_class=None,
+                options={0: "disabled", 1: "enabled"},
+            ),
+            "must declare options as a list or tuple",
+        ),
+        (
+            SimpleNamespace(
+                translation_key="invalid_sensor_device_class",
+                key="invalid_sensor_device_class",
+                device_class=SensorDeviceClass.POWER,
+                state_class=None,
+                options=["disabled", "enabled"],
+            ),
+            "must not declare a non-enum device_class",
+        ),
+    ],
+)
+def test_entity_description_kwargs_reject_invalid_sensor_metadata(
+    description: SimpleNamespace,
+    message: str,
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        entity_description_kwargs(
+            coordinator="coordinator",
+            device_info="device",
+            description=description,
+        )
+
+
 def test_async_platform_context_validates_descriptor_catalog(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -318,6 +355,41 @@ def test_async_platform_context_validates_descriptor_catalog(
     )
 
     with pytest.raises(ValueError, match="Unsupported action"):
+        asyncio.run(
+            platform_setup_module.async_platform_context(
+                HomeAssistant(),
+                SimpleNamespace(runtime_data=object()),
+            )
+        )
+
+
+def test_async_platform_context_validates_sensor_descriptor_catalog(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    invalid_sensor = SimpleNamespace(
+        translation_key="invalid_sensor_device_class",
+        key="invalid_sensor_device_class",
+        device_class=SensorDeviceClass.POWER,
+        state_class=None,
+        options=["disabled", "enabled"],
+    )
+
+    async def _fake_ensure_translation_cache(_hass) -> None:
+        return None
+
+    monkeypatch.setattr(
+        platform_setup_module,
+        "ENTITY_DESCRIPTOR_COLLECTIONS",
+        ((invalid_sensor,),),
+    )
+    monkeypatch.setattr(platform_setup_module, "_VALID_DESCRIPTOR_CATALOG", False)
+    monkeypatch.setattr(
+        platform_setup_module,
+        "async_ensure_translation_cache",
+        _fake_ensure_translation_cache,
+    )
+
+    with pytest.raises(ValueError, match="must not declare a non-enum device_class"):
         asyncio.run(
             platform_setup_module.async_platform_context(
                 HomeAssistant(),

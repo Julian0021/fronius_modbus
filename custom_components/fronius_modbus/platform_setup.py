@@ -1,7 +1,10 @@
 """Shared helpers for entity platform setup."""
 from __future__ import annotations
 
+import re
 from typing import Any, cast
+
+from homeassistant.components.sensor import SensorDeviceClass
 
 from .const import (
     AVAILABILITY_POLICIES,
@@ -17,6 +20,7 @@ from .storage_modes import storage_mode_supports
 from .translation import async_ensure_translation_cache
 
 _VALID_DESCRIPTOR_CATALOG = False
+_VALID_TRANSLATION_KEY_RE = re.compile(r"[a-z0-9](?:[a-z0-9-_]*[a-z0-9])?")
 _DESCRIPTOR_SERVICE_ACTIONS = {
     "command_service": frozenset(
         name
@@ -33,6 +37,18 @@ _DESCRIPTOR_SERVICE_ACTIONS = {
 
 def _descriptor_key(description) -> str:
     return str(getattr(description, "key", getattr(description, "translation_key", "<unknown>")))
+
+
+def _validate_translation_key(description) -> None:
+    translation_key = getattr(description, "translation_key", None)
+    if not isinstance(translation_key, str) or not translation_key:
+        raise ValueError(
+            f"Descriptor {_descriptor_key(description)!r} is missing a translation_key"
+        )
+    if not _VALID_TRANSLATION_KEY_RE.fullmatch(translation_key):
+        raise ValueError(
+            f"Unsupported translation_key {translation_key!r} for descriptor {_descriptor_key(description)!r}"
+        )
 
 
 def _validate_service_action(
@@ -77,7 +93,35 @@ def _resolve_descriptor_value_transform(description) -> str | None:
     return value_transform
 
 
+def _validate_sensor_metadata(description) -> None:
+    if not hasattr(description, "state_class") and not hasattr(description, "device_class"):
+        return
+
+    options = getattr(description, "options", None)
+    if options is None:
+        return
+    if not isinstance(options, (list, tuple)):
+        raise ValueError(
+            f"Sensor descriptor {_descriptor_key(description)!r} must declare options as a list or tuple"
+        )
+    if any(not isinstance(option, str) for option in options):
+        raise ValueError(
+            f"Sensor descriptor {_descriptor_key(description)!r} must declare string options"
+        )
+    if len(set(options)) != len(options):
+        raise ValueError(
+            f"Sensor descriptor {_descriptor_key(description)!r} must not declare duplicate options"
+        )
+    device_class = getattr(description, "device_class", None)
+    if device_class not in (None, SensorDeviceClass.ENUM):
+        raise ValueError(
+            f"Sensor descriptor {_descriptor_key(description)!r} must not declare a non-enum device_class when options are present"
+        )
+
+
 def _validate_descriptor_behavior(description) -> None:
+    _validate_translation_key(description)
+    _validate_sensor_metadata(description)
     _resolve_descriptor_availability(description)
     _validate_service_action(
         description,

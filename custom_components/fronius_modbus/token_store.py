@@ -54,14 +54,22 @@ class FroniusTokenStore:
     ) -> None:
         """Persist a token for one host/user pair and keep the cache in sync."""
         data = await self._async_load_all()
-        data[_token_key(host, user)] = {"realm": realm, "token": token}
-        await self._store.async_save(data)
+        updated_data = dict(data)
+        updated_data[_token_key(host, user)] = {"realm": realm, "token": token}
+        await self._store.async_save(updated_data)
+        self._cache = updated_data
 
     async def async_delete_token(self, host: str, user: str = API_USERNAME) -> None:
         """Delete the stored token for a host/user pair if one was saved."""
         data = await self._async_load_all()
-        if data.pop(_token_key(host, user), None) is not None:
-            await self._store.async_save(data)
+        token_key = _token_key(host, user)
+        if token_key not in data:
+            return
+
+        updated_data = dict(data)
+        updated_data.pop(token_key, None)
+        await self._store.async_save(updated_data)
+        self._cache = updated_data
 
 
 def async_get_token_store(hass: HomeAssistant) -> FroniusTokenStore:

@@ -8,7 +8,10 @@ import custom_components.fronius_modbus.froniusmodbus_reads as reads_module
 from custom_components.fronius_modbus.froniusmodbus_reads import (
     FroniusModbusReadService,
 )
-from custom_components.fronius_modbus.storage_modes import StorageExtendedControlMode
+from custom_components.fronius_modbus.storage_modes import (
+    StorageExtendedControlMode,
+    StorageModeReadback,
+)
 
 
 class _StorageReadFacade:
@@ -92,12 +95,20 @@ async def test_read_inverter_storage_data_passes_charge_grid_flag_to_mode_deriva
 ) -> None:
     captured_kwargs: dict[str, object] = {}
 
-    def _fake_derive_mode(storage_control_mode: int, **kwargs):
+    def _fake_derive_readback(storage_control_mode: int, **kwargs):
         captured_kwargs["storage_control_mode"] = storage_control_mode
         captured_kwargs.update(kwargs)
-        return StorageExtendedControlMode.CHARGE_FROM_GRID
+        return StorageModeReadback(
+            extended_mode=StorageExtendedControlMode.CHARGE_FROM_GRID,
+            control_mode_label="charge",
+            charge_status_label="charging",
+            charge_limit=1.0,
+            discharge_limit=0.0,
+            grid_charge_power=0.0,
+            grid_discharge_power=0.0,
+        )
 
-    monkeypatch.setattr(reads_module, "derive_storage_extended_mode", _fake_derive_mode)
+    monkeypatch.setattr(reads_module, "derive_storage_mode_readback", _fake_derive_readback)
 
     service = FroniusModbusReadService(
         _StorageReadFacade(
@@ -122,6 +133,8 @@ async def test_read_inverter_storage_data_passes_charge_grid_flag_to_mode_deriva
         "charge_power": 100,
         "discharge_power": 0,
         "charge_grid_enabled": True,
+        "control_mode_label": "charge",
+        "charge_status_label": "charging",
     }
 
 
@@ -148,6 +161,8 @@ async def test_read_inverter_storage_data_normalizes_charge_status_for_charge_fr
     assert service._facade.data["ext_control_mode"] == "charge_from_grid"
     assert service._facade.data["control_mode"] == "charge"
     assert service._facade.data["charge_status"] == "charging"
+    assert service._facade.data["charge_limit"] == 1.0
+    assert service._facade.data["discharge_limit"] == 0.0
 
 
 @pytest.mark.asyncio
@@ -173,6 +188,8 @@ async def test_read_inverter_storage_data_recognizes_discharge_to_grid_defaults(
     assert service._facade.data["ext_control_mode"] == "discharge_to_grid"
     assert service._facade.data["control_mode"] == "discharge"
     assert service._facade.data["charge_status"] == "discharging"
+    assert service._facade.data["discharge_limit"] == 1.0
+    assert service._facade.data["grid_discharge_power"] == 0.0
 
 
 @pytest.mark.asyncio
@@ -198,3 +215,5 @@ async def test_read_inverter_storage_data_normalizes_legacy_discharge_to_grid_si
     assert service._facade.data["ext_control_mode"] == "discharge_to_grid"
     assert service._facade.data["control_mode"] == "discharge"
     assert service._facade.data["charge_status"] == "discharging"
+    assert service._facade.data["charge_limit"] == 0.0
+    assert service._facade.data["grid_discharge_power"] == 0.25

@@ -59,11 +59,57 @@ def _clean_text(value: Any) -> str | None:
 
 
 def _parse_json_object(value: Any) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return value
     try:
         parsed = json.loads(value) if isinstance(value, str) else None
     except (TypeError, ValueError, json.JSONDecodeError):
         return {}
     return parsed if isinstance(parsed, dict) else {}
+
+
+def _parse_host_port(value: Any) -> tuple[str | None, int | None]:
+    raw_value = _clean_text(value)
+    if raw_value is None:
+        return None, None
+    if ";" in raw_value:
+        raw_value = raw_value.split(";", 1)[1]
+    host, _, port_text = raw_value.rpartition(":")
+    if not host or not port_text:
+        return None, None
+    port = _as_int(port_text, 0)
+    if port <= 0:
+        return None, None
+    return host, port
+
+
+def _parse_meter_tcp_connection(attributes: dict[str, Any]) -> dict[str, Any] | None:
+    connection = _parse_json_object(attributes.get("connection"))
+    protocol = (
+        _clean_text(connection.get("protocol"))
+        or _clean_text(connection.get("name"))
+        or _clean_text(attributes.get("if"))
+    )
+    normalized_protocol = (
+        protocol.lower().replace("-", "").replace("_", "").replace(";", "")
+        if protocol
+        else ""
+    )
+    if "modbustcp" not in normalized_protocol:
+        return None
+
+    host = _clean_text(connection.get("ip"))
+    port = _as_int(connection.get("port"), 0)
+    if host is None or port <= 0:
+        endpoint_host, endpoint_port = _parse_host_port(
+            connection.get("id") or attributes.get("if")
+        )
+        host = host or endpoint_host
+        port = port if port > 0 else (endpoint_port or 0)
+    if host is None or port <= 0:
+        return None
+
+    return {"host": host, "port": port}
 
 
 def _parse_storage_info(attributes: Any) -> dict[str, str | None]:
@@ -160,6 +206,7 @@ def _parse_power_meter_info(
         "primary_unit_id": None,
         "phase_counts_by_unit_id": {},
         "locations_by_unit_id": {},
+        "tcp_meter_connections_by_unit_id": {},
         "payload_shape": payload_shape,
     }
 
@@ -193,6 +240,7 @@ def _parse_power_meter_info(
                 "is_primary": label == "<primary>" or location == "0",
                 "location": _as_int(location, -1),
                 "phase_count": phase_count if phase_count > 0 else None,
+                "tcp_connection": _parse_meter_tcp_connection(attributes),
             }
         )
 
@@ -212,6 +260,8 @@ def _parse_power_meter_info(
             result["phase_counts_by_unit_id"][unit_id] = meter["phase_count"]
         if meter["location"] >= 0:
             result["locations_by_unit_id"][unit_id] = meter["location"]
+        if isinstance(meter["tcp_connection"], dict):
+            result["tcp_meter_connections_by_unit_id"][unit_id] = meter["tcp_connection"]
         if result["primary_unit_id"] is None and meter["is_primary"]:
             result["primary_unit_id"] = unit_id
 

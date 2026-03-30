@@ -1,6 +1,7 @@
 """Fronius Modbus client state plus read, write, and runtime services."""
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 
 from .extmodbusclient import ExtModbusClient
@@ -15,6 +16,12 @@ from .modbus_values import (
     strip_control_chars,
 )
 from .runtime_state import FroniusRuntimeState, StateSection
+
+
+@dataclass(frozen=True, slots=True)
+class MeterTcpConnection:
+    host: str
+    port: int
 
 
 class FroniusModbusClient(ExtModbusClient):
@@ -39,9 +46,12 @@ class FroniusModbusClient(ExtModbusClient):
         self.initialized = False
 
         self._inverter_unit_id = inverter_unit_id
+        self._timeout = timeout
         self._meter_address_offset = int(meter_unit_ids[0]) if meter_unit_ids else 200
         self._meter_unit_ids = [self._meter_address_offset]
         self._primary_meter_unit_id = self._meter_address_offset
+        self._meter_tcp_connections: dict[int, MeterTcpConnection] = {}
+        self._meter_transport_clients: dict[tuple[str, int], ExtModbusClient] = {}
 
         self.meter_configured = False
         self.mppt_configured = False
@@ -218,6 +228,73 @@ class FroniusModbusClient(ExtModbusClient):
         else:
             self._primary_meter_unit_id = self._meter_address_offset
 
+    def set_meter_tcp_connections(
+        self,
+        connections_by_unit_id: dict[int, dict[str, Any]] | None,
+    ) -> None:
+        normalized: dict[int, MeterTcpConnection] = {}
+        for raw_unit_id, raw_connection in (connections_by_unit_id or {}).items():
+            if not self.is_numeric(raw_unit_id) or not isinstance(raw_connection, dict):
+                continue
+            host = raw_connection.get("host")
+            port = raw_connection.get("port")
+            if not isinstance(host, str) or not host.strip() or not self.is_numeric(port):
+                continue
+            unit_id = int(raw_unit_id)
+            normalized_port = int(port)
+            if unit_id <= 0 or normalized_port <= 0:
+                continue
+            normalized[unit_id] = MeterTcpConnection(host=host.strip(), port=normalized_port)
+
+        stale_endpoints = {
+            endpoint
+            for endpoint in self._meter_transport_clients
+            if endpoint
+            not in {
+                (connection.host, connection.port)
+                for connection in normalized.values()
+            }
+        }
+        for endpoint in stale_endpoints:
+            self._meter_transport_clients.pop(endpoint).close()
+
+        self._meter_tcp_connections = normalized
+
+    def _meter_transport_client(self, unit_id: int) -> ExtModbusClient | None:
+        connection = self._meter_tcp_connections.get(int(unit_id))
+        if connection is None:
+            return None
+        if connection.host == self._host and connection.port == self._port:
+            return None
+
+        endpoint = (connection.host, connection.port)
+        client = self._meter_transport_clients.get(endpoint)
+        if client is None:
+            client = ExtModbusClient(
+                host=connection.host,
+                port=connection.port,
+                unit_id=int(unit_id),
+                timeout=self._timeout,
+            )
+            self._meter_transport_clients[endpoint] = client
+        return client
+
+    async def get_meter_registers(self, unit_id, address, count, retries=1):
+        client = self._meter_transport_client(unit_id)
+        if client is None:
+            return await self.get_registers(
+                unit_id=unit_id,
+                address=address,
+                count=count,
+                retries=retries,
+            )
+        return await client.get_registers(
+            unit_id=unit_id,
+            address=address,
+            count=count,
+            retries=retries,
+        )
+
     def _map_value(self, values: dict, key: int, field_name: str):
         value = values.get(key)
         if value is None:
@@ -270,3 +347,9 @@ class FroniusModbusClient(ExtModbusClient):
 
     def data_snapshot(self) -> dict[str, Any]:
         return self.state.snapshot()
+
+    def close(self) -> None:
+        for client in self._meter_transport_clients.values():
+            client.close()
+        self._meter_transport_clients.clear()
+        super().close()

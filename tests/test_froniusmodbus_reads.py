@@ -89,6 +89,40 @@ class _StorageReadFacade:
         return values.get(key, f"Unknown ({key})")
 
 
+class _MeterRouteFacade:
+    def __init__(self) -> None:
+        self._host = "fixture-host"
+        self._port = 502
+        self._client = SimpleNamespace(
+            DATATYPE=SimpleNamespace(UINT16="uint16", STRING="string"),
+            convert_from_registers=self._convert_from_registers,
+        )
+        self.data: dict[str, object] = {}
+        self.calls: list[tuple[str, int, int, int]] = []
+
+    async def get_registers(self, *, unit_id, address, count, retries=1):
+        del retries
+        self.calls.append(("default", unit_id, address, count))
+        return [0] * count
+
+    async def get_meter_registers(self, *, unit_id, address, count, retries=1):
+        del retries
+        self.calls.append(("meter", unit_id, address, count))
+        return [0] * count
+
+    def get_string_from_registers(self, regs):
+        del regs
+        return "fixture"
+
+    def _convert_from_registers(self, regs, data_type):
+        del regs, data_type
+        return 200
+
+    def _decode_reg(self, regs, start, data_type, length=1):
+        del regs, start, data_type, length
+        return 200
+
+
 @pytest.mark.asyncio
 async def test_read_inverter_storage_data_passes_charge_grid_flag_to_mode_derivation(
     monkeypatch: pytest.MonkeyPatch,
@@ -217,3 +251,21 @@ async def test_read_inverter_storage_data_normalizes_legacy_discharge_to_grid_si
     assert service._facade.data["charge_status"] == "discharging"
     assert service._facade.data["charge_limit"] == 0.0
     assert service._facade.data["grid_discharge_power"] == 0.25
+
+
+@pytest.mark.asyncio
+async def test_read_device_info_data_routes_meter_prefix_through_meter_transport() -> None:
+    facade = _MeterRouteFacade()
+    service = FroniusModbusReadService(facade)
+
+    assert await service.read_device_info_data(prefix="meter_200_", unit_id=200) is True
+    assert facade.calls == [("meter", 200, reads_module.COMMON_ADDRESS, 65)]
+
+
+@pytest.mark.asyncio
+async def test_read_device_info_data_keeps_inverter_prefix_on_default_transport() -> None:
+    facade = _MeterRouteFacade()
+    service = FroniusModbusReadService(facade)
+
+    assert await service.read_device_info_data(prefix="i_", unit_id=1) is True
+    assert facade.calls == [("default", 1, reads_module.COMMON_ADDRESS, 65)]

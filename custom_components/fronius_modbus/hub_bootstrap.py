@@ -72,6 +72,7 @@ class MeterTopologyDiscovery:
     primary_unit_id: int | None = None
     phase_counts: dict[int, int] = field(default_factory=dict)
     locations: dict[int, int] = field(default_factory=dict)
+    tcp_connections: dict[int, dict[str, int | str]] = field(default_factory=dict)
 
 
 class HubBootstrapService:
@@ -153,6 +154,10 @@ class HubBootstrapService:
         discovery.locations = self._coerce_non_negative_int_map(
             meter_info.get("locations_by_unit_id"),
         )
+        discovery.tcp_connections = self._coerce_meter_tcp_connections(
+            meter_info.get("tcp_meter_connections_by_unit_id"),
+            discovery.unit_ids,
+        )
         return discovery
 
     def _coerce_meter_topology(
@@ -185,6 +190,42 @@ class HubBootstrapService:
             seen.add(value)
             values.append(value)
         return values
+
+    def _coerce_meter_tcp_connections(
+        self,
+        raw_connections,
+        unit_ids: list[int] | None,
+    ) -> dict[int, dict[str, int | str]]:
+        normalized: dict[int, dict[str, int | str]] = {}
+        if not isinstance(raw_connections, dict) or not unit_ids:
+            return normalized
+
+        allowed_unit_ids = set(unit_ids)
+        for raw_unit_id, raw_connection in raw_connections.items():
+            if (
+                not self._hub._client.is_numeric(raw_unit_id)
+                or not isinstance(raw_connection, dict)
+            ):
+                continue
+            unit_id = int(raw_unit_id)
+            if unit_id not in allowed_unit_ids:
+                continue
+            host = raw_connection.get("host")
+            port = raw_connection.get("port")
+            if (
+                not isinstance(host, str)
+                or not host.strip()
+                or not self._hub._client.is_numeric(port)
+            ):
+                continue
+            normalized_port = int(port)
+            if normalized_port <= 0:
+                continue
+            normalized[unit_id] = {
+                "host": host.strip(),
+                "port": normalized_port,
+            }
+        return normalized
 
     def _coerce_positive_int_map(self, raw_values) -> dict[int, int]:
         values: dict[int, int] = {}
@@ -230,6 +271,8 @@ class HubBootstrapService:
                 self._hub.set_meter_value(unit_id, "location", location)
 
     def _apply_effective_meter_topology(self, discovery: MeterTopologyDiscovery) -> None:
+        if discovery.tcp_connections:
+            self._hub._client.set_meter_tcp_connections(discovery.tcp_connections)
         if discovery.unit_ids is None:
             return
 

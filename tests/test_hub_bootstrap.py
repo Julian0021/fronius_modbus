@@ -18,6 +18,7 @@ class _BootstrapClient:
         self._calls = calls
         self.meter_unit_ids = [200]
         self.primary_meter_unit_id = 200
+        self.meter_tcp_connections: dict[int, dict[str, int | str]] = {}
         self.runtime_service = SimpleNamespace(init_data=self._init_runtime_data)
 
     async def _init_runtime_data(self) -> None:
@@ -37,6 +38,12 @@ class _BootstrapClient:
         self.meter_unit_ids = list(unit_ids or [])
         if primary_unit_id is not None:
             self.primary_meter_unit_id = int(primary_unit_id)
+
+    def set_meter_tcp_connections(self, connections_by_unit_id) -> None:
+        self._calls.append(
+            ("set_meter_tcp_connections", dict(connections_by_unit_id or {}))
+        )
+        self.meter_tcp_connections = dict(connections_by_unit_id or {})
 
     def reset_storage_info(self) -> None:
         self._calls.append("reset_storage_info")
@@ -217,6 +224,46 @@ async def test_bootstrap_service_applies_validated_meter_topology_before_runtime
     assert hub.primary_meter_unit_id == 200
     assert ("set_meter_value", 240, "phase_count", 1) in calls
     assert ("set_meter_value", 240, "location", 1) in calls
+
+
+async def test_bootstrap_service_applies_tcp_meter_connections_before_runtime_init(
+    monkeypatch,
+) -> None:
+    calls: list[object] = []
+    hub = _BootstrapHub(
+        calls,
+        power_meter_info={
+            "unit_ids": [200],
+            "primary_unit_id": 200,
+            "phase_counts_by_unit_id": {200: 3},
+            "locations_by_unit_id": {200: 0},
+            "tcp_meter_connections_by_unit_id": {
+                200: {"host": "192.168.0.205", "port": 502}
+            },
+        },
+    )
+    service = HubBootstrapService(hub)
+
+    monkeypatch.setattr(
+        hub_bootstrap_module,
+        "check_pymodbus_version",
+        lambda: calls.append("check_pymodbus_version"),
+    )
+
+    await service.init_data(setup_coordinator=False)
+
+    assert calls[:4] == [
+        "check_pymodbus_version",
+        ("async_web_job", "get_power_meter_info", (200,), {}),
+        (
+            "set_meter_tcp_connections",
+            {200: {"host": "192.168.0.205", "port": 502}},
+        ),
+        ("set_meter_unit_ids", [200], 200),
+    ]
+    assert hub._client.meter_tcp_connections == {
+        200: {"host": "192.168.0.205", "port": 502}
+    }
 
 
 def test_check_pymodbus_version_raises_dependency_error_on_resolution_failure(

@@ -281,7 +281,14 @@ class FroniusModbusReadService:
 
     @_safe_read("device info")
     async def read_device_info_data(self, prefix, unit_id):
-        regs = await self._facade.get_registers(
+        get_registers = (
+            getattr(self._facade, "get_meter_registers", None)
+            if str(prefix).startswith("meter_")
+            else None
+        )
+        if not callable(get_registers):
+            get_registers = self._facade.get_registers
+        regs = await get_registers(
             unit_id=unit_id,
             address=COMMON_ADDRESS,
             count=65,
@@ -1196,7 +1203,10 @@ class FroniusModbusReadService:
     async def read_meter_data(self, unit_id, is_primary=False):
         """Read one meter model and update meter values and grid health."""
         meter_prefix = self._facade._meter_prefix(unit_id)
-        regs = await self._facade.get_registers(
+        get_registers = getattr(self._facade, "get_meter_registers", None)
+        if not callable(get_registers):
+            get_registers = self._facade.get_registers
+        regs = await get_registers(
             unit_id=unit_id,
             address=METER_ADDRESS,
             count=103,

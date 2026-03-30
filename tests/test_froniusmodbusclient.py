@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+import custom_components.fronius_modbus.extmodbusclient as extmodbusclient_module
 from custom_components.fronius_modbus.froniusmodbusclient import FroniusModbusClient
 
 
@@ -126,3 +127,62 @@ async def test_live_snapshot_decodes_expected_poll_values(live_modbus_registers)
     assert client.data["meter_200_WphB"] == pytest.approx(-560.9)
     assert client.data["meter_200_WphC"] == pytest.approx(-611.6)
     assert client.data["grid_status"] == "on_grid_operating"
+
+
+@pytest.mark.asyncio
+async def test_get_meter_registers_routes_tcp_meter_to_external_host(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = FroniusModbusClient(
+        host="inverter.local",
+        port=502,
+        inverter_unit_id=1,
+        meter_unit_ids=[200],
+        timeout=1,
+    )
+    client.set_meter_tcp_connections(
+        {
+            200: {"host": "192.168.0.205", "port": 502},
+        }
+    )
+    calls: list[tuple[str, int, int, int, int, int]] = []
+
+    async def _fake_get_registers(self, unit_id, address, count, retries=1):
+        calls.append((self._host, self._port, unit_id, address, count, retries))
+        return [1] * count
+
+    monkeypatch.setattr(
+        extmodbusclient_module.ExtModbusClient,
+        "get_registers",
+        _fake_get_registers,
+    )
+
+    assert await client.get_meter_registers(200, 40000, 4) == [1, 1, 1, 1]
+    assert calls == [("192.168.0.205", 502, 200, 40000, 4, 1)]
+
+
+@pytest.mark.asyncio
+async def test_get_meter_registers_keeps_rtu_meter_on_inverter_host(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = FroniusModbusClient(
+        host="inverter.local",
+        port=502,
+        inverter_unit_id=1,
+        meter_unit_ids=[200],
+        timeout=1,
+    )
+    calls: list[tuple[str, int, int, int, int, int]] = []
+
+    async def _fake_get_registers(self, unit_id, address, count, retries=1):
+        calls.append((self._host, self._port, unit_id, address, count, retries))
+        return [1] * count
+
+    monkeypatch.setattr(
+        extmodbusclient_module.ExtModbusClient,
+        "get_registers",
+        _fake_get_registers,
+    )
+
+    assert await client.get_meter_registers(200, 40000, 4) == [1, 1, 1, 1]
+    assert calls == [("inverter.local", 502, 200, 40000, 4, 1)]

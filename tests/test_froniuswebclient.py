@@ -26,6 +26,27 @@ POWER_METER_READABLE_PAYLOAD = {
     }
 }
 
+POWER_METER_TCP_READABLE_PAYLOAD = {
+    "Body": {
+        "Data": {
+            "meter_node": {
+                "attributes": {
+                    "addr": "1",
+                    "manufacturer": "Fronius",
+                    "meter-location": "0",
+                    "model": "Smart Meter 63A",
+                    "phaseCnt": "3",
+                    "connection": (
+                        '{"id":"192.168.0.205:502","ip":"192.168.0.205",'
+                        '"name":"modbus-tcp","port":502,"protocol":"ModbusTCP"}\n'
+                    ),
+                    "if": "modbus-tcp;192.168.0.205:502",
+                }
+            }
+        }
+    }
+}
+
 INVERTER_READABLE_PAYLOAD = {
     "Body": {
         "Data": {
@@ -72,6 +93,25 @@ def test_get_power_meter_info_parses_live_payload(monkeypatch) -> None:
         "primary_unit_id": 200,
         "phase_counts_by_unit_id": {200: 3},
         "locations_by_unit_id": {200: 0},
+        "tcp_meter_connections_by_unit_id": {},
+        "payload_shape": "Body.Data",
+    }
+
+
+def test_get_power_meter_info_parses_modbus_tcp_meter_endpoint(monkeypatch) -> None:
+    client = FroniusWebClient("fixture-host")
+    monkeypatch.setattr(client, "_get_public_json", lambda path: POWER_METER_TCP_READABLE_PAYLOAD)
+
+    meter_info = client.get_power_meter_info()
+
+    assert meter_info == {
+        "unit_ids": [200],
+        "primary_unit_id": 200,
+        "phase_counts_by_unit_id": {200: 3},
+        "locations_by_unit_id": {200: 0},
+        "tcp_meter_connections_by_unit_id": {
+            200: {"host": "192.168.0.205", "port": 502}
+        },
         "payload_shape": "Body.Data",
     }
 

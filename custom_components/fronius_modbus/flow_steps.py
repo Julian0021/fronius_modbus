@@ -6,7 +6,7 @@ import logging
 from typing import Any
 
 from homeassistant import config_entries
-from homeassistant.const import CONF_HOST, CONF_NAME, CONF_SCAN_INTERVAL
+from homeassistant.const import CONF_HOST
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.selector import (
     TextSelector,
@@ -15,14 +15,12 @@ from homeassistant.helpers.selector import (
 )
 import voluptuous as vol
 
-from .config_data import merged_entry_config
-from .const import (
-    CONF_API_PASSWORD,
-    CONF_RESTRICT_MODBUS_TO_THIS_IP,
-    DEFAULT_NAME,
-    DEFAULT_RESTRICT_MODBUS_TO_THIS_IP,
-    DEFAULT_SCAN_INTERVAL,
+from .config_data import (
+    editable_settings_schema,
+    expand_editable_settings,
+    merged_entry_config,
 )
+from .const import CONF_API_PASSWORD
 from .flow_helpers import (
     AddressesNotUnique,
     CannotConnect,
@@ -61,37 +59,11 @@ class _PendingFlowState:
 
 
 def entry_defaults(entry: config_entries.ConfigEntry) -> dict[str, Any]:
-    defaults = merged_entry_config(entry)
-    try:
-        defaults[CONF_SCAN_INTERVAL] = int(
-            defaults.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
-        )
-    except (TypeError, ValueError):
-        defaults[CONF_SCAN_INTERVAL] = DEFAULT_SCAN_INTERVAL
-    return defaults
+    return expand_editable_settings({}, merged_entry_config(entry))
 
 
 def _build_settings_schema(defaults: dict[str, Any]) -> vol.Schema:
-    return vol.Schema(
-        {
-            vol.Required(
-                CONF_NAME,
-                default=defaults.get(CONF_NAME, DEFAULT_NAME),
-            ): str,
-            vol.Required(CONF_HOST, default=defaults.get(CONF_HOST, "")): str,
-            vol.Required(
-                CONF_SCAN_INTERVAL,
-                default=defaults.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
-            ): vol.Coerce(int),
-            vol.Required(
-                CONF_RESTRICT_MODBUS_TO_THIS_IP,
-                default=defaults.get(
-                    CONF_RESTRICT_MODBUS_TO_THIS_IP,
-                    DEFAULT_RESTRICT_MODBUS_TO_THIS_IP,
-                ),
-            ): bool,
-        }
-    )
+    return editable_settings_schema(defaults)
 
 
 def _build_password_schema() -> vol.Schema:

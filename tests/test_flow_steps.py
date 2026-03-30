@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
 from typing import Any
 
 from homeassistant.const import (
@@ -9,8 +10,14 @@ from homeassistant.const import (
     CONF_SCAN_INTERVAL,
 )
 
-from custom_components.fronius_modbus.config_data import default_config_payload
-from custom_components.fronius_modbus.flow_helpers import InvalidApiCredentials
+from custom_components.fronius_modbus.config_data import (
+    default_config_payload,
+    form_setting_defaults,
+)
+from custom_components.fronius_modbus.flow_helpers import (
+    InvalidApiCredentials,
+    expand_settings_input,
+)
 import custom_components.fronius_modbus.flow_steps as flow_steps_module
 
 
@@ -142,3 +149,47 @@ def test_build_settings_schema_includes_name_field() -> None:
     schema_keys = {marker.schema for marker in schema.schema}
 
     assert CONF_NAME in schema_keys
+
+
+def test_editable_settings_contract_drives_defaults_schema_and_expansion() -> None:
+    base_settings = _settings(host="base-host")
+    expanded = expand_settings_input(
+        {
+            CONF_NAME: " Updated Name ",
+            CONF_HOST: " updated-host ",
+            CONF_SCAN_INTERVAL: "15",
+            CONF_RESTRICT_MODBUS_TO_THIS_IP: True,
+        },
+        base_settings,
+    )
+    defaults = form_setting_defaults(expanded)
+    schema = flow_steps_module._build_settings_schema(defaults)
+
+    schema_keys = {marker.schema for marker in schema.schema}
+
+    assert set(defaults) == schema_keys
+    assert defaults == {
+        CONF_NAME: "Updated Name",
+        CONF_HOST: "updated-host",
+        CONF_SCAN_INTERVAL: 15,
+        CONF_RESTRICT_MODBUS_TO_THIS_IP: True,
+    }
+
+
+def test_entry_defaults_normalizes_saved_editable_settings() -> None:
+    entry = SimpleNamespace(
+        data={
+            CONF_NAME: " Existing Name ",
+            CONF_HOST: " inverter.local ",
+            CONF_SCAN_INTERVAL: "15",
+            CONF_RESTRICT_MODBUS_TO_THIS_IP: 1,
+        },
+        options={},
+    )
+
+    defaults = flow_steps_module.entry_defaults(entry)
+
+    assert defaults[CONF_NAME] == "Existing Name"
+    assert defaults[CONF_HOST] == "inverter.local"
+    assert defaults[CONF_SCAN_INTERVAL] == 15
+    assert defaults[CONF_RESTRICT_MODBUS_TO_THIS_IP] is True

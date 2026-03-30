@@ -8,7 +8,11 @@ from homeassistant.const import CONF_HOST, CONF_NAME, CONF_PORT, CONF_SCAN_INTER
 from homeassistant.core import HomeAssistant
 from requests import RequestException
 
-from .config_data import default_config_payload, sanitize_config_payload
+from .config_data import (
+    default_config_payload,
+    expand_editable_settings,
+    sanitize_config_payload,
+)
 from .const import (
     API_USERNAME,
     CONF_AUTO_ENABLE_MODBUS,
@@ -17,7 +21,6 @@ from .const import (
     DEFAULT_AUTO_ENABLE_MODBUS,
     DEFAULT_INVERTER_UNIT_ID,
     DEFAULT_METER_UNIT_IDS,
-    DEFAULT_NAME,
     DEFAULT_PORT,
     DEFAULT_RESTRICT_MODBUS_TO_THIS_IP,
     SUPPORTED_MANUFACTURERS,
@@ -79,19 +82,7 @@ def expand_settings_input(
     base_settings: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Overlay user input onto runtime defaults and normalize the stored payload."""
-    payload = runtime_defaults(base_settings)
-    payload[CONF_NAME] = str(user_input.get(CONF_NAME, payload[CONF_NAME])).strip() or DEFAULT_NAME
-    payload[CONF_HOST] = str(user_input.get(CONF_HOST, payload[CONF_HOST])).strip()
-    payload[CONF_SCAN_INTERVAL] = int(
-        user_input.get(CONF_SCAN_INTERVAL, payload[CONF_SCAN_INTERVAL])
-    )
-    payload[CONF_RESTRICT_MODBUS_TO_THIS_IP] = bool(
-        user_input.get(
-            CONF_RESTRICT_MODBUS_TO_THIS_IP,
-            payload[CONF_RESTRICT_MODBUS_TO_THIS_IP],
-        )
-    )
-    return sanitize_config_payload(payload)
+    return expand_editable_settings(user_input, runtime_defaults(base_settings))
 
 
 def validate_static_input(data: dict[str, Any]) -> None:

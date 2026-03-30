@@ -71,9 +71,14 @@ class FroniusModbusRuntimeService:
                 discovered_meter_unit_ids.append(unit_id)
 
         if discovered_meter_unit_ids or not meter_probe_failed:
+            primary_unit_id = (
+                previous_primary_meter_unit_id
+                if previous_primary_meter_unit_id in discovered_meter_unit_ids
+                else None
+            )
             self._facade.set_meter_unit_ids(
                 discovered_meter_unit_ids,
-                primary_unit_id=previous_primary_meter_unit_id,
+                primary_unit_id=primary_unit_id,
             )
         else:
             self._facade.set_meter_unit_ids(

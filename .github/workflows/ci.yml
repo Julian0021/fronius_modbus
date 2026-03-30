@@ -29,6 +29,38 @@ jobs:
       - name: Compile Python files
         run: python -m compileall -q custom_components tests
 
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build runtime-only HACS package
+        run: ./scripts/build_hacs_release.sh
+      - name: Verify package contents
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+
+          from pathlib import Path
+          import zipfile
+
+          archives = sorted(Path("dist").glob("*.zip"))
+          assert len(archives) == 1, archives
+
+          with zipfile.ZipFile(archives[0]) as archive:
+              names = archive.namelist()
+
+          assert names, "package is empty"
+          assert "custom_components/fronius_modbus/manifest.json" in names
+          allowed_roots = {"custom_components/"}
+          assert all(
+              name in allowed_roots
+              or name.startswith("custom_components/fronius_modbus/")
+              for name in names
+          ), names
+          assert not any(name.startswith("tests/") for name in names), names
+          assert not any(name.startswith(".github/") for name in names), names
+          PY
+
   test:
     runs-on: ubuntu-latest
     strategy:

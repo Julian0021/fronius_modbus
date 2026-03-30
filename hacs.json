@@ -1,4 +1,7 @@
 {
     "name": "Fronius Modbus",
-    "homeassistant": "2024.4.0"
+    "homeassistant": "2024.4.0",
+    "filename": "fronius_modbus.zip",
+    "hide_default_branch": true,
+    "zip_release": true
   }

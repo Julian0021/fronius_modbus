@@ -90,6 +90,25 @@ class _RuntimeFacade:
 
 
 @pytest.mark.asyncio
+async def test_runtime_init_keeps_multiple_recognized_meters_registered() -> None:
+    facade = _RuntimeFacade(
+        meter_unit_ids=[200, 240],
+        primary_meter_unit_id=240,
+        meter_probe_results={
+            200: True,
+            240: True,
+        },
+    )
+    service = FroniusModbusRuntimeService(facade)
+
+    assert await service.init_data() is True
+    assert facade.meter_unit_ids == (200, 240)
+    assert facade.primary_meter_unit_id == 240
+    assert facade.entity_registry_cleanup_safe is True
+    assert facade.set_meter_unit_ids_calls[-1] == ([200, 240], 240)
+
+
+@pytest.mark.asyncio
 async def test_runtime_init_realigns_primary_meter_when_discovery_changes_meter_set() -> None:
     facade = _RuntimeFacade(
         meter_unit_ids=[200, 240],

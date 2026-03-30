@@ -408,6 +408,30 @@ def test_sensor_platform_setup_covers_meter_mppt_and_storage_gating() -> None:
     assert meter_entity._attr_device_info == hub.get_device_info_meter(200)
 
 
+def test_sensor_platform_setup_registers_multiple_meters_with_phase_specific_entities() -> None:
+    hub = _FakeHub(
+        meter_configured=True,
+        meter_unit_ids=[200, 240],
+        meter_phase_counts={200: 1, 240: 3},
+    )
+
+    entities = _collect_entities(sensor_platform.async_setup_entry, hub)
+    keys = {entity._key for entity in entities}
+
+    assert "meter_200_power" in keys
+    assert "meter_240_power" in keys
+    assert "meter_200_AphB" not in keys
+    assert "meter_240_AphB" in keys
+
+    meter_200_entity = _entity_by_key(entities, "meter_200_power")
+    assert meter_200_entity._attr_unique_id == "fm_meter_200_power"
+    assert meter_200_entity._attr_device_info == hub.get_device_info_meter(200)
+
+    meter_240_entity = _entity_by_key(entities, "meter_240_power")
+    assert meter_240_entity._attr_unique_id == "fm_meter_240_power"
+    assert meter_240_entity._attr_device_info == hub.get_device_info_meter(240)
+
+
 def test_number_platform_setup_builds_entities_with_availability_and_dispatch() -> None:
     hub = _FakeHub(
         data={

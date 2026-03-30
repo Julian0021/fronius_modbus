@@ -17,7 +17,7 @@ from .const import (
     MIGRATION_RECONFIGURE_ISSUE_ID_PREFIX,
 )
 from .froniuswebclient import FroniusWebAuthError
-from .hub_commands import toggle_busy
+from .hub_commands import derive_api_battery_mode, toggle_busy
 from .integration_errors import (
     FroniusAuthError,
     FroniusConnectionError,
@@ -199,7 +199,7 @@ class HubWebApiService:
         raw_soc_mode = battery_config.get("BAT_M0_SOC_MODE")
         raw_soc_mode = raw_soc_mode.lower() if isinstance(raw_soc_mode, str) else None
 
-        effective_mode = self._hub._derive_api_battery_mode(raw_mode, raw_soc_mode)
+        effective_mode = derive_api_battery_mode(raw_mode, raw_soc_mode)
         self._set_clearable_web_value("api_battery_mode_raw", raw_mode)
         self._set_clearable_web_value("api_battery_mode_effective_raw", effective_mode)
         self._set_clearable_web_value(

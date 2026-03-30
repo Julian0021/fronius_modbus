@@ -382,16 +382,6 @@ def _login_response(
     return response, auth
 
 
-def login(
-    host: str,
-    user: str,
-    password: str = "",
-    token: dict[str, str] | None = None,
-    timeout: float = 4.0,
-) -> bool:
-    return _login_response(host, user, password=password, token=token, timeout=timeout)[0].status_code == 200
-
-
 def mint_token(host: str, user: str, password: str, timeout: float = 4.0) -> dict[str, str] | None:
     response, auth = _login_response(host, user, password=password, timeout=timeout)
     return auth.saved_token if response.status_code == 200 else None
@@ -466,9 +456,6 @@ class FroniusWebClient:
     def _post_ok(self, path: str, payload: dict[str, Any] | None = None) -> bool:
         return self._request("post", path, payload=payload).ok
 
-    def issued_token(self) -> dict[str, str] | None:
-        return self._auth.saved_token
-
     def _resolve_client_ip(self) -> str:
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
@@ -482,13 +469,13 @@ class FroniusWebClient:
         return client_ip
 
     def login(self) -> bool:
-        return login(
+        return _login_response(
             self._host,
             self._username,
             password=self._password,
             token=self._auth.token,
             timeout=self._timeout,
-        )
+        )[0].status_code == 200
 
     def get_modbus_config(self) -> dict[str, Any]:
         return self._get_json("/api/config/modbus")

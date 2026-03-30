@@ -14,8 +14,6 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .const import (
-    API_BATTERY_MODE,
-    API_SOC_MODE,
     DOMAIN,
     ENTITY_PREFIX,
     SOLAR_API_LOW_FIRMWARE_ISSUE_ID_PREFIX,
@@ -23,7 +21,7 @@ from .const import (
 from .froniusmodbusclient import FroniusModbusClient
 from .froniuswebclient import FroniusWebClient
 from .hub_bootstrap import HubBootstrapService
-from .hub_commands import HubCommandService, derive_api_battery_mode, toggle_busy
+from .hub_commands import HubCommandService
 from .hub_runtime import HubRuntimeService
 from .hub_warnings import HubWarningService
 from .hub_web_api import HubWebApiService
@@ -133,11 +131,6 @@ class Hub:
         self._web_api_service = HubWebApiService(self)
         self._command_service = HubCommandService(self)
 
-    @staticmethod
-    def toggle_busy(func):
-        """Backward-compatible decorator alias for serialized hub writes."""
-        return toggle_busy(func)
-
     def _meter_prefix(self, unit_id: int) -> str:
         return f"meter_{int(unit_id)}_"
 
@@ -185,16 +178,13 @@ class Hub:
         if self._consecutive_bad_load_polls == 1 and self._last_good_load_w is not None:
             self.derived_state.set("load", self._last_good_load_w)
 
-    def _solar_api_warning_issue_id(self) -> str | None:
+    @property
+    def solar_api_warning_issue_id(self) -> str | None:
         if self._config_entry is None:
             return None
         return f"{SOLAR_API_LOW_FIRMWARE_ISSUE_ID_PREFIX}{self._config_entry.entry_id}"
 
-    @property
-    def solar_api_warning_issue_id(self) -> str | None:
-        return self._solar_api_warning_issue_id()
-
-    def _parse_firmware_version(
+    def parse_firmware_version(
         self,
         version_text: Any,
     ) -> tuple[int, int, int, int] | None:
@@ -207,12 +197,6 @@ class Hub:
 
         major, minor, patch, build = match.groups(default="0")
         return (int(major), int(minor), int(patch), int(build))
-
-    def parse_firmware_version(
-        self,
-        version_text: Any,
-    ) -> tuple[int, int, int, int] | None:
-        return self._parse_firmware_version(version_text)
 
     @property
     def hass(self) -> HomeAssistant:
@@ -236,32 +220,6 @@ class Hub:
     def _clear_battery_write_transition(self) -> None:
         self._battery_write_transition_until = 0.0
         self._battery_write_transition_warned = False
-
-    def _derive_api_battery_mode(
-        self,
-        raw_mode: int | None,
-        raw_soc_mode: str | None,
-    ) -> int | None:
-        return derive_api_battery_mode(raw_mode, raw_soc_mode)
-
-    def _set_effective_api_battery_mode(
-        self,
-        raw_mode: int | None,
-        raw_soc_mode: str | None,
-    ) -> None:
-        effective_mode = self._derive_api_battery_mode(raw_mode, raw_soc_mode)
-        self.web_api_state.set("api_battery_mode_raw", raw_mode)
-        self.web_api_state.set("api_battery_mode_effective_raw", effective_mode)
-        self.web_api_state.set("api_battery_mode_consistent", effective_mode is not None)
-        self.web_api_state.set(
-            "api_battery_mode",
-            API_BATTERY_MODE.get(effective_mode) if effective_mode is not None else None
-        )
-        self.web_api_state.set("api_soc_mode_raw", raw_soc_mode)
-        self.web_api_state.set(
-            "api_soc_mode",
-            API_SOC_MODE.get(raw_soc_mode, raw_soc_mode),
-        )
 
     def _as_int(self, value: Any) -> int | None:
         try:

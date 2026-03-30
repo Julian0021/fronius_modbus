@@ -45,10 +45,6 @@ class FroniusTokenStore:
             return None
         return {"realm": realm, "token": secret}
 
-    async def async_has_token(self, host: str, user: str = API_USERNAME) -> bool:
-        """Return whether a usable token exists for the given host/user pair."""
-        return await self.async_load_token(host, user) is not None
-
     async def async_save_token(
         self,
         host: str,

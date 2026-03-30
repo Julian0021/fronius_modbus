@@ -60,7 +60,6 @@ def _build_hub() -> tuple[SimpleNamespace, list[tuple[str, str]], list[str]]:
         web_state=state.web_api,
         storage_state=state.storage,
         _as_int=lambda value: int(value) if value is not None else None,
-        _derive_api_battery_mode=lambda raw_mode, _raw_soc_mode: raw_mode,
         _enabled_bool=_enabled_bool,
         _enabled_state=_enabled_state,
         storage_configured=True,

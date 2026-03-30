@@ -1,12 +1,9 @@
 """Command handlers for Hub writes."""
 from __future__ import annotations
 
-import logging
 from functools import wraps
 
 from .storage_modes import get_storage_mode_policy
-
-_LOGGER = logging.getLogger(__name__)
 
 
 def toggle_busy(func):

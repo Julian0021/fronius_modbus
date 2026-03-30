@@ -69,7 +69,7 @@ from .froniusmodbusclient_const import (
     SUNSPEC_STORAGE_MODEL_ID,
 )
 from .integration_errors import FroniusError, FroniusReadError
-from .storage_modes import derive_storage_extended_mode
+from .storage_modes import StorageExtendedControlMode, derive_storage_extended_mode
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -1131,12 +1131,30 @@ class FroniusModbusReadService:
             raw["charge_grid_set"],
             "grid charging",
         )
-        self._facade._set_mapped(
-            "charge_status",
+        charge_grid_enabled = (
+            raw["charge_grid_set"] == 1
+            if self._facade.is_numeric(raw["charge_grid_set"])
+            else None
+        )
+        ext_control_mode = derive_storage_extended_mode(
+            raw["storage_control_mode"],
+            charge_power=raw["charge_power"],
+            discharge_power=raw["discharge_power"],
+            charge_grid_enabled=charge_grid_enabled,
+        )
+
+        charge_status = self._facade._map_value(
             CHARGE_STATUS,
             raw["charge_status"],
             "charge status",
         )
+        if (
+            ext_control_mode == StorageExtendedControlMode.CHARGE_FROM_GRID
+            and charge_status == "Discharging"
+        ):
+            charge_status = "Charging"
+
+        self._facade.data["charge_status"] = charge_status
         self._facade.data["soc_minimum"] = soc_minimum_value
         self._facade._set_calculated(
             "discharging_power",
@@ -1178,17 +1196,6 @@ class FroniusModbusReadService:
             self._facade.data["charge_limit"] = 0
 
         self._facade.data["control_mode"] = mapped_control_mode
-
-        ext_control_mode = derive_storage_extended_mode(
-            raw["storage_control_mode"],
-            charge_power=raw["charge_power"],
-            discharge_power=raw["discharge_power"],
-            charge_grid_enabled=(
-                raw["charge_grid_set"] == 1
-                if self._facade.is_numeric(raw["charge_grid_set"])
-                else None
-            ),
-        )
 
         if ext_control_mode is not None:
             self._facade.data["ext_control_mode"] = self._facade._map_value(

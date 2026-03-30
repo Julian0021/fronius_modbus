@@ -17,7 +17,8 @@ class FroniusModbusRuntimeService:
     async def init_data(self):
         """Probe inverter capabilities and cache the devices that are present."""
         previous_mppt_configured = self._facade.mppt_configured
-        previous_meter_unit_ids = list(self._facade._meter_unit_ids)
+        previous_meter_unit_ids = list(self._facade.meter_unit_ids)
+        previous_primary_meter_unit_id = self._facade.primary_meter_unit_id
 
         try:
             await self._facade.connect()
@@ -46,7 +47,7 @@ class FroniusModbusRuntimeService:
 
         discovered_meter_unit_ids: list[int] = []
         meter_probe_failed = False
-        for unit_id in self._facade._meter_unit_ids:
+        for unit_id in self._facade.meter_unit_ids:
             prefix = self._facade._meter_prefix(unit_id)
             try:
                 await self._facade.read_service.read_device_info_data(
@@ -70,23 +71,29 @@ class FroniusModbusRuntimeService:
                 discovered_meter_unit_ids.append(unit_id)
 
         if discovered_meter_unit_ids or not meter_probe_failed:
-            self._facade._meter_unit_ids = discovered_meter_unit_ids
+            self._facade.set_meter_unit_ids(
+                discovered_meter_unit_ids,
+                primary_unit_id=previous_primary_meter_unit_id,
+            )
         else:
-            self._facade._meter_unit_ids = previous_meter_unit_ids
+            self._facade.set_meter_unit_ids(
+                previous_meter_unit_ids,
+                primary_unit_id=previous_primary_meter_unit_id,
+            )
             _LOGGER.debug(
                 "Keeping existing smart meter unit ids for %s:%s after discovery probe failures: %s",
                 self._facade._host,
                 self._facade._port,
                 previous_meter_unit_ids,
             )
-        self._facade.meter_configured = bool(self._facade._meter_unit_ids)
+        self._facade.meter_configured = bool(self._facade.meter_unit_ids)
 
         if self._facade.meter_configured:
             _LOGGER.info(
                 "Configured Fronius smart meter unit ids on %s:%s: %s",
                 self._facade._host,
                 self._facade._port,
-                self._facade._meter_unit_ids,
+                self._facade.meter_unit_ids,
             )
 
         try:

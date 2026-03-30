@@ -59,6 +59,24 @@ def _validate_service_action(
         )
 
 
+def _resolve_descriptor_display_scale(description) -> str | None:
+    display_scale = getattr(description, "display_scale", None)
+    if display_scale is not None and display_scale not in DISPLAY_SCALE_NAMES:
+        raise ValueError(
+            f"Unsupported display_scale {display_scale!r} for descriptor {_descriptor_key(description)!r}"
+        )
+    return display_scale
+
+
+def _resolve_descriptor_value_transform(description) -> str | None:
+    value_transform = getattr(description, "value_transform", None)
+    if value_transform is not None and value_transform not in VALUE_TRANSFORM_NAMES:
+        raise ValueError(
+            f"Unsupported value_transform {value_transform!r} for descriptor {_descriptor_key(description)!r}"
+        )
+    return value_transform
+
+
 def _validate_descriptor_behavior(description) -> None:
     _resolve_descriptor_availability(description)
     _validate_service_action(
@@ -77,17 +95,8 @@ def _validate_descriptor_behavior(description) -> None:
         action_attr="turn_off_action",
     )
 
-    display_scale = getattr(description, "display_scale", None)
-    if display_scale is not None and display_scale not in DISPLAY_SCALE_NAMES:
-        raise ValueError(
-            f"Unsupported display_scale {display_scale!r} for descriptor {_descriptor_key(description)!r}"
-        )
-
-    value_transform = getattr(description, "value_transform", None)
-    if value_transform is not None and value_transform not in VALUE_TRANSFORM_NAMES:
-        raise ValueError(
-            f"Unsupported value_transform {value_transform!r} for descriptor {_descriptor_key(description)!r}"
-        )
+    _resolve_descriptor_display_scale(description)
+    _resolve_descriptor_value_transform(description)
 
 
 def validate_descriptor_catalog() -> None:
@@ -172,6 +181,8 @@ async def dispatch_service_action(
     """Invoke a named service action declared by an entity descriptor."""
     if action is None:
         return None
+    if service_name is not None and service_name not in DESCRIPTOR_SERVICE_NAMES:
+        raise ValueError(f"Unsupported service_name {service_name!r} for action {action!r}")
     target = hub if service_name is None else getattr(hub, service_name)
     handler = getattr(target, action)
     return await handler(*args, **kwargs)
@@ -228,7 +239,7 @@ def descriptor_native_number_value(hub, description, value: Any):
     """Return the user-facing number value for a descriptor-backed entity."""
     if value is None:
         return None
-    display_scale = getattr(description, "display_scale", None)
+    display_scale = _resolve_descriptor_display_scale(description)
     if display_scale == "discharge_rate":
         return round(float(value) / 100.0 * hub.max_discharge_rate_w, 0)
     if display_scale == "charge_rate":
@@ -242,7 +253,7 @@ descriptor_number_value = descriptor_native_number_value
 
 def descriptor_number_write_value(description, value: Any):
     """Normalize a numeric entity value before sending it to the hub."""
-    value_transform = getattr(description, "value_transform", None)
+    value_transform = _resolve_descriptor_value_transform(description)
     if value_transform == "round_int":
         return int(round(value))
     return value

@@ -237,6 +237,59 @@ def test_descriptor_helpers_reject_unknown_availability_policies() -> None:
         )
 
 
+def test_descriptor_helpers_reject_invalid_descriptor_contract_fields() -> None:
+    invalid_action_service = SimpleNamespace(
+        translation_key="invalid",
+        key="invalid_key",
+        availability="always",
+        action_service="not_a_service",
+        action="set_mode",
+    )
+    invalid_action = SimpleNamespace(
+        translation_key="invalid",
+        key="invalid_key",
+        availability="always",
+        action_service="command_service",
+        action="does_not_exist",
+    )
+
+    with pytest.raises(ValueError, match="Unsupported action_service"):
+        entity_description_kwargs(
+            coordinator="coordinator",
+            device_info="device",
+            description=invalid_action_service,
+        )
+
+    with pytest.raises(ValueError, match="Unsupported action"):
+        entity_description_kwargs(
+            coordinator="coordinator",
+            device_info="device",
+            description=invalid_action,
+        )
+
+    with pytest.raises(ValueError, match="Unsupported service_name"):
+        asyncio.run(
+            dispatch_service_action(
+                hub=SimpleNamespace(),
+                service_name="not_a_service",
+                action="set_mode",
+            )
+        )
+
+    with pytest.raises(ValueError, match="Unsupported display_scale"):
+        descriptor_number_value(
+            SimpleNamespace(max_charge_rate_w=1, max_discharge_rate_w=1),
+            SimpleNamespace(display_scale="not_real"),
+            5,
+        )
+
+    with pytest.raises(ValueError, match="Unsupported value_transform"):
+        descriptor_number_write_value(
+            SimpleNamespace(value_transform="not_real"),
+            5,
+        )
+
+
 @pytest.mark.parametrize(
     ("description", "message"),
     [

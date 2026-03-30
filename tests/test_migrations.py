@@ -16,8 +16,6 @@ async def test_async_migrate_entry_allows_older_entries_without_rewriting() -> N
     )
     entry = ConfigEntry(
         entry_id="entry-1",
-        version=1,
-        minor_version=7,
         data={"legacy": True},
         options={"legacy_option": True},
     )
@@ -37,8 +35,6 @@ async def test_async_migrate_entry_allows_newer_entry_versions_without_rewriting
     )
     entry = ConfigEntry(
         entry_id="entry-2",
-        version=2,
-        minor_version=1,
         data={},
         options={},
     )

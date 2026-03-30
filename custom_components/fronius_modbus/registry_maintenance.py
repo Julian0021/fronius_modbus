@@ -25,6 +25,11 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 _LEGACY_METER_DEVICE_RE = re.compile(r".*_meter\d+")
+_TOPOLOGY_SENSITIVE_ENTITY_KEY_PREFIXES = (
+    "mppt_module_",
+    "storage_charge_",
+    "storage_discharge_",
+)
 _V019_MPPT_UNIQUE_ID_MAPPINGS = (
     ("fm_mppt1_power", "mppt_module_0_dc_power", "mppt_module_dc_power", {"module": "1"}),
     ("fm_mppt2_power", "mppt_module_1_dc_power", "mppt_module_dc_power", {"module": "2"}),
@@ -65,6 +70,15 @@ def _expected_entity_unique_ids(runtime_data: Hub) -> set[str]:
         *iter_switch_keys(runtime_data),
     )
     return {_entity_unique_id(runtime_data, key) for key in platform_keys}
+
+
+def _is_topology_sensitive_unique_id(runtime_data: Hub, unique_id: str) -> bool:
+    """Return whether a unique id belongs to a soft-discovered topology entity."""
+    entity_prefix = f"{runtime_data.entity_prefix}_"
+    if not unique_id.startswith(entity_prefix):
+        return False
+    key = unique_id.removeprefix(entity_prefix)
+    return key.startswith(_TOPOLOGY_SENSITIVE_ENTITY_KEY_PREFIXES)
 
 
 async def async_migrate_v019_mppt_statistics(
@@ -160,6 +174,8 @@ async def async_remove_unexpected_entities(
     hass: HomeAssistant,
     entry: ConfigEntry,
     runtime_data: Hub,
+    *,
+    preserve_topology_sensitive_entities: bool = False,
 ) -> None:
     """Drop registry entities that are not part of the current runtime model."""
     registry = er.async_get(hass)
@@ -168,6 +184,11 @@ async def async_remove_unexpected_entities(
     for entity_entry in _entity_entries_for_config_entry(registry, entry):
         unique_id = entity_entry.unique_id or ""
         if not unique_id or unique_id in expected_unique_ids:
+            continue
+        if (
+            preserve_topology_sensitive_entities
+            and _is_topology_sensitive_unique_id(runtime_data, unique_id)
+        ):
             continue
         registry.async_remove(entity_entry.entity_id)
         removed += 1

@@ -88,8 +88,20 @@ def _patch_setup_dependencies(
     async def _async_migrate_v019_mppt_statistics(_hass, _entry, provided_runtime_data) -> None:
         registry_calls.append(("migrate_mppt", provided_runtime_data))
 
-    async def _async_remove_unexpected_entities(_hass, _entry, provided_runtime_data) -> None:
-        registry_calls.append(("remove_unexpected", provided_runtime_data))
+    async def _async_remove_unexpected_entities(
+        _hass,
+        _entry,
+        provided_runtime_data,
+        *,
+        preserve_topology_sensitive_entities: bool = False,
+    ) -> None:
+        registry_calls.append(
+            (
+                "remove_unexpected",
+                provided_runtime_data,
+                preserve_topology_sensitive_entities,
+            )
+        )
 
     async def _async_remove_legacy_devices(_hass, _entry) -> None:
         registry_calls.append(("remove_legacy", None))
@@ -143,7 +155,7 @@ async def test_async_setup_entry_attaches_runtime_data_only_on_success(
     assert issue_calls == [True, True]
     assert registry_calls == [
         ("migrate_mppt", runtime_data),
-        ("remove_unexpected", runtime_data),
+        ("remove_unexpected", runtime_data, True),
         ("remove_legacy", None),
     ]
     assert hasattr(entry, "_update_listener")
@@ -193,7 +205,7 @@ async def test_async_setup_entry_closes_and_detaches_runtime_data_when_forwardin
     assert issue_calls == [True, True]
     assert registry_calls == [
         ("migrate_mppt", runtime_data),
-        ("remove_unexpected", runtime_data),
+        ("remove_unexpected", runtime_data, True),
         ("remove_legacy", None),
     ]
     assert not hasattr(entry, "_update_listener")

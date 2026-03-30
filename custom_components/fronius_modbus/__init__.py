@@ -85,6 +85,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: HubConfigEntry) -> bool:
             hass,
             entry,
             runtime_data,
+            preserve_topology_sensitive_entities=True,
         )
         await registry_maintenance.async_remove_legacy_devices(hass, entry)
         await entry_reconfigure.async_sync_reconfigure_issue(

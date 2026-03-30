@@ -1,8 +1,13 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 from custom_components.fronius_modbus.button import iter_button_keys
 from custom_components.fronius_modbus.number import iter_number_keys
-from custom_components.fronius_modbus.registry_maintenance import _expected_entity_unique_ids
+from custom_components.fronius_modbus.registry_maintenance import (
+    _expected_entity_unique_ids,
+    async_remove_unexpected_entities,
+)
 from custom_components.fronius_modbus.select import iter_select_keys
 from custom_components.fronius_modbus.sensor import iter_sensor_keys
 from custom_components.fronius_modbus.switch import iter_switch_keys
@@ -53,3 +58,42 @@ def test_expected_entity_unique_ids_follow_platform_key_iterators() -> None:
     assert "fm_meter_200_AphB" not in _expected_entity_unique_ids(hub)
     assert "fm_mppt_module_0_dc_current" in _expected_entity_unique_ids(hub)
     assert "fm_mppt_module_2_dc_current" not in _expected_entity_unique_ids(hub)
+
+
+async def test_async_remove_unexpected_entities_preserves_topology_sensitive_ids(
+    monkeypatch,
+) -> None:
+    hub = _RegistryHub()
+    registry_entries = [
+        SimpleNamespace(entity_id="sensor.stale_stable", unique_id="fm_stale_sensor"),
+        SimpleNamespace(
+            entity_id="sensor.stale_mppt",
+            unique_id="fm_mppt_module_9_dc_power",
+        ),
+        SimpleNamespace(
+            entity_id="sensor.stale_storage_transfer",
+            unique_id="fm_storage_charge_power",
+        ),
+    ]
+    removed_entity_ids: list[str] = []
+    registry = SimpleNamespace(
+        async_remove=lambda entity_id: removed_entity_ids.append(entity_id)
+    )
+
+    monkeypatch.setattr(
+        "custom_components.fronius_modbus.registry_maintenance.er.async_get",
+        lambda _hass: registry,
+    )
+    monkeypatch.setattr(
+        "custom_components.fronius_modbus.registry_maintenance.er.async_entries_for_config_entry",
+        lambda _registry, _entry_id: registry_entries,
+    )
+
+    await async_remove_unexpected_entities(
+        hass=object(),
+        entry=SimpleNamespace(entry_id="entry-1"),
+        runtime_data=hub,
+        preserve_topology_sensitive_entities=True,
+    )
+
+    assert removed_entity_ids == ["sensor.stale_stable"]

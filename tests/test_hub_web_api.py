@@ -4,9 +4,9 @@ from types import SimpleNamespace
 
 from homeassistant.core import HomeAssistant
 
-import custom_components.fronius_modbus.hub_web_api as hub_web_api_module
 from custom_components.fronius_modbus.const import API_USERNAME
 from custom_components.fronius_modbus.froniuswebclient import FroniusWebAuthError
+import custom_components.fronius_modbus.hub_web_api as hub_web_api_module
 from custom_components.fronius_modbus.hub_web_api import HubWebApiService
 from custom_components.fronius_modbus.runtime_state import FroniusRuntimeState
 

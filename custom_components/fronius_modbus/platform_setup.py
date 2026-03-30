@@ -234,5 +234,5 @@ def descriptor_number_write_value(description, value: Any):
     """Normalize a numeric entity value before sending it to the hub."""
     value_transform = _resolve_descriptor_value_transform(description)
     if value_transform == "round_int":
-        return int(round(value))
+        return round(value)
     return value

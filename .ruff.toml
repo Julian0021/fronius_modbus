@@ -1,13 +1,25 @@
 target-version = "py311"
-line-length = 100
+line-length = 88
 required-version = "0.15.8"
 
 [lint]
 select = [
-    "F",
-    "I",
+    "ASYNC",
     "B",
     "C4",
+    "F",
+    "I",
+    "RUF",
     "SIM",
     "UP",
 ]
+
+[lint.isort]
+force-sort-within-sections = true
+known-first-party = ["custom_components"]
+combine-as-imports = true
+split-on-trailing-comma = false
+
+[format]
+quote-style = "double"
+indent-style = "space"

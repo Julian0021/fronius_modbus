@@ -3,7 +3,11 @@ from __future__ import annotations
 from homeassistant.components.select import SelectEntity
 
 from .base import FroniusModbusBaseEntity
-from .const import INVERTER_SELECT_TYPES, STORAGE_API_SELECT_TYPES, STORAGE_MODBUS_SELECT_TYPES
+from .const import (
+    INVERTER_SELECT_TYPES,
+    STORAGE_API_SELECT_TYPES,
+    STORAGE_MODBUS_SELECT_TYPES,
+)
 from .platform_setup import (
     async_platform_context,
     descriptor_is_available,

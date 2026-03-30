@@ -3,7 +3,10 @@ from __future__ import annotations
 import hashlib
 from types import SimpleNamespace
 
-from custom_components.fronius_modbus.froniuswebclient import FroniusWebClient, XHeaderDigestAuth
+from custom_components.fronius_modbus.froniuswebclient import (
+    FroniusWebClient,
+    XHeaderDigestAuth,
+)
 
 
 def _digest_value(secret: str, nonce: str, nc: str, cnonce: str, qop: str, ha2: str) -> str:

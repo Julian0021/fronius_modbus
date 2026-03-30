@@ -9,9 +9,9 @@ from homeassistant.const import (
     CONF_SCAN_INTERVAL,
 )
 
-import custom_components.fronius_modbus.flow_steps as flow_steps_module
 from custom_components.fronius_modbus.config_data import default_config_payload
 from custom_components.fronius_modbus.flow_helpers import InvalidApiCredentials
+import custom_components.fronius_modbus.flow_steps as flow_steps_module
 
 
 class _Flow(flow_steps_module.TokenFlowMixin):

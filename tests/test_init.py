@@ -4,10 +4,10 @@ import importlib
 from pathlib import Path
 from types import SimpleNamespace
 
-import pytest
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST
 from homeassistant.core import HomeAssistant
+import pytest
 
 integration = importlib.import_module("custom_components.fronius_modbus")
 

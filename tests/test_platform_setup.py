@@ -3,26 +3,18 @@ from __future__ import annotations
 import asyncio
 from types import SimpleNamespace
 
-import pytest
 from homeassistant.components.sensor import SensorDeviceClass
 from homeassistant.core import HomeAssistant
+import pytest
 
-import custom_components.fronius_modbus.platform_setup as platform_setup_module
 from custom_components.fronius_modbus import (
     button as button_platform,
-)
-from custom_components.fronius_modbus import (
     number as number_platform,
-)
-from custom_components.fronius_modbus import (
     select as select_platform,
-)
-from custom_components.fronius_modbus import (
     sensor as sensor_platform,
-)
-from custom_components.fronius_modbus import (
     switch as switch_platform,
 )
+import custom_components.fronius_modbus.platform_setup as platform_setup_module
 from custom_components.fronius_modbus.platform_setup import (
     descriptor_is_available,
     descriptor_native_number_value,

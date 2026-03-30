@@ -6,13 +6,10 @@ from typing import TYPE_CHECKING
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import device_registry as dr
-from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers import device_registry as dr, entity_registry as er
 
 from .button import iter_button_keys
-from .const import (
-    DOMAIN,
-)
+from .const import DOMAIN
 from .entity_names import async_resolve_entity_name
 from .number import iter_number_keys
 from .select import iter_select_keys

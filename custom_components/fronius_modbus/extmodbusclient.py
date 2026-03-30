@@ -27,7 +27,14 @@ class ModbusWriteError(ModbusTransportError):
 
 
 class ExtModbusClient:
-    def __init__(self, host: str, port: int, unit_id: int, timeout: int, framer: str = None) -> None:
+    def __init__(
+        self,
+        host: str,
+        port: int,
+        unit_id: int,
+        timeout: int,
+        framer: str | None = None,
+    ) -> None:
         """Initialize the Modbus client."""
         self._host = host
         self._port = port

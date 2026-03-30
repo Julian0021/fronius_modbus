@@ -2,12 +2,15 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-import pytest
 from homeassistant.core import HomeAssistant
+import pytest
 from requests import RequestException
 
 import custom_components.fronius_modbus.flow_helpers as flow_helpers_module
-from custom_components.fronius_modbus.flow_helpers import CannotConnect, InvalidApiCredentials
+from custom_components.fronius_modbus.flow_helpers import (
+    CannotConnect,
+    InvalidApiCredentials,
+)
 from custom_components.fronius_modbus.froniuswebclient import FroniusWebAuthError
 from custom_components.fronius_modbus.hub_web_api import HubWebApiService
 from custom_components.fronius_modbus.integration_errors import (

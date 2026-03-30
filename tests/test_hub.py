@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from datetime import timedelta
 
-import pytest
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+import pytest
 
 import custom_components.fronius_modbus.hub as hub_module
 from custom_components.fronius_modbus.hub import FroniusCoordinator

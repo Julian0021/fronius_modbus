@@ -4,8 +4,8 @@ import types
 
 from homeassistant.config_entries import ConfigEntry
 
-import custom_components.fronius_modbus.entry_reconfigure as entry_reconfigure
 from custom_components.fronius_modbus.const import CONF_RECONFIGURE_REQUIRED
+import custom_components.fronius_modbus.entry_reconfigure as entry_reconfigure
 
 
 async def test_async_prepare_entry_token_sets_reconfigure_required_without_token(

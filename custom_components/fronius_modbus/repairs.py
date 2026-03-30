@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from typing import Any
 
-import voluptuous as vol
 from homeassistant.components.repairs import RepairsFlow
 from homeassistant.helpers import issue_registry as ir
+import voluptuous as vol
 
 from .config_data import form_setting_defaults
 from .const import (
@@ -12,7 +12,10 @@ from .const import (
     MIGRATION_RECONFIGURE_ISSUE_ID_PREFIX,
     SOLAR_API_LOW_FIRMWARE_ISSUE_ID_PREFIX,
 )
-from .flow_helpers import async_apply_requested_modbus_config, async_update_entry_from_input
+from .flow_helpers import (
+    async_apply_requested_modbus_config,
+    async_update_entry_from_input,
+)
 from .flow_steps import TokenFlowMixin, entry_defaults
 from .integration_errors import (
     FroniusAuthError,

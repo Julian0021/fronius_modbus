@@ -2,22 +2,18 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import timedelta
+from inspect import signature
 import logging
 import re
 import time
-from datetime import timedelta
-from inspect import signature
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
-from .const import (
-    DOMAIN,
-    ENTITY_PREFIX,
-    SOLAR_API_LOW_FIRMWARE_ISSUE_ID_PREFIX,
-)
+from .const import DOMAIN, ENTITY_PREFIX, SOLAR_API_LOW_FIRMWARE_ISSUE_ID_PREFIX
 from .froniusmodbusclient import FroniusModbusClient
 from .froniuswebclient import FroniusWebClient
 from .hub_bootstrap import HubBootstrapService

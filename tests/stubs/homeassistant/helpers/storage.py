@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, ClassVar
 
 
 class Store:
-    _storage: dict[tuple[int, int, str], Any] = {}
+    _storage: ClassVar[dict[tuple[int, int, str], Any]] = {}
 
     def __init__(self, hass, version: int, key: str) -> None:
         self._storage_key = (id(hass), version, key)

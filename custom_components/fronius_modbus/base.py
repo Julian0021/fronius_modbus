@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import logging
 from collections.abc import Mapping
+import logging
 from typing import Any
 
 from homeassistant.core import callback

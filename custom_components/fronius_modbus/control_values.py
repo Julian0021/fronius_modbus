@@ -14,7 +14,7 @@ def coerce_scale_factor(
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return None
 
-    scale_factor = int(round(value))
+    scale_factor = round(value)
     if minimum <= scale_factor <= maximum:
         return scale_factor
     return None
@@ -44,7 +44,7 @@ def power_factor_value_to_raw(value: Any, power_factor_sf: int | None) -> int | 
     if numeric_value < -1 or numeric_value > 1:
         return None
 
-    raw_value = int(round(numeric_value / (10**power_factor_sf)))
+    raw_value = round(numeric_value / (10**power_factor_sf))
     if raw_value < -32768 or raw_value > 32767:
         return None
     return raw_value
@@ -72,7 +72,7 @@ def ac_limit_raw_to_watts(
     percent = ac_limit_raw_to_percent(raw_value, rate_sf)
     if percent is None or max_power_w is None:
         return None
-    return int(round(max_power_w * percent / 100.0))
+    return round(max_power_w * percent / 100.0)
 
 
 def ac_limit_watts_to_raw(
@@ -93,12 +93,12 @@ def ac_limit_watts_to_raw(
     clamped_watts = min(max(float(watts), 0.0), max_power_w)
     percent = (clamped_watts / max_power_w) * 100.0
     raw_unclamped = percent / (10**rate_sf)
-    raw_max = int(round(100.0 / (10**rate_sf)))
+    raw_max = round(100.0 / (10**rate_sf))
     raw_value = int(round(raw_unclamped, abs(rate_sf)))
     return max(0, min(raw_max, raw_value))
 
 
 def signed_percent_to_register(rate: float) -> int:
     """Encode a signed percent value into the inverter register format."""
-    raw_value = int(round(rate * 100))
+    raw_value = round(rate * 100)
     return 65536 + raw_value if raw_value < 0 else raw_value

@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import types
 
-import pytest
 from homeassistant.config_entries import ConfigEntry
+import pytest
 
-import custom_components.fronius_modbus.repairs as repairs_module
 from custom_components.fronius_modbus.config_data import form_setting_defaults
 from custom_components.fronius_modbus.flow_steps import entry_defaults
 from custom_components.fronius_modbus.integration_errors import (
@@ -13,6 +12,7 @@ from custom_components.fronius_modbus.integration_errors import (
     FroniusConnectionError,
     FroniusOperationError,
 )
+import custom_components.fronius_modbus.repairs as repairs_module
 from custom_components.fronius_modbus.repairs import (
     FroniusDisableSolarApiRepairFlow,
     FroniusReconfigureRepairFlow,

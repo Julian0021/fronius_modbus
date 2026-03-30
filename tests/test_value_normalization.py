@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from custom_components.fronius_modbus.value_normalization import enabled_state, is_enabled
+from custom_components.fronius_modbus.value_normalization import (
+    enabled_state,
+    is_enabled,
+)
 
 
 def test_is_enabled_handles_common_string_inputs() -> None:

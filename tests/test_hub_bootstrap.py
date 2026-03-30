@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-import pytest
 from homeassistant.core import HomeAssistant
+import pytest
 
 import custom_components.fronius_modbus.hub_bootstrap as hub_bootstrap_module
 from custom_components.fronius_modbus.hub_bootstrap import (
@@ -167,5 +167,5 @@ def test_check_pymodbus_version_raises_dependency_error_on_old_version(
     )
     monkeypatch.setattr(hub_bootstrap_module, "version", lambda _name: "3.6.0")
 
-    with pytest.raises(FroniusDependencyError, match="please update to 3.7.0 or higher"):
+    with pytest.raises(FroniusDependencyError, match=r"please update to 3\.7\.0 or higher"):
         check_pymodbus_version()

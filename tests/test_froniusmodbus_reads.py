@@ -5,7 +5,9 @@ from types import SimpleNamespace
 import pytest
 
 import custom_components.fronius_modbus.froniusmodbus_reads as reads_module
-from custom_components.fronius_modbus.froniusmodbus_reads import FroniusModbusReadService
+from custom_components.fronius_modbus.froniusmodbus_reads import (
+    FroniusModbusReadService,
+)
 from custom_components.fronius_modbus.storage_modes import StorageExtendedControlMode
 
 

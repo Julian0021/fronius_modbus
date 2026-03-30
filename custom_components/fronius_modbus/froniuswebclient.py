@@ -1,12 +1,12 @@
 from __future__ import annotations
 
+from functools import cache
 import hashlib
 import json
 import logging
 import os
 import re
 import socket
-from functools import cache
 from typing import Any
 from urllib.parse import urlparse
 

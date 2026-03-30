@@ -1,10 +1,10 @@
 """Bootstrap helpers for Hub setup and first-refresh orchestration."""
 from __future__ import annotations
 
-import json
-import logging
 from dataclasses import dataclass, field
 from importlib.metadata import version
+import json
+import logging
 from pathlib import Path
 
 from homeassistant.config_entries import ConfigEntry

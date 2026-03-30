@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-import pytest
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
+import pytest
 
 from custom_components.fronius_modbus.platform_setup import entity_description_kwargs
 from custom_components.fronius_modbus.sensor import FroniusModbusSensor

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-import pytest
 from pymodbus.exceptions import ConnectionException
+import pytest
 
 from custom_components.fronius_modbus.extmodbusclient import (
     ExtModbusClient,

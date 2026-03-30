@@ -1,10 +1,10 @@
 """Read and parse helpers for the Fronius Modbus client."""
 from __future__ import annotations
 
-import logging
-import time
 from dataclasses import dataclass
 from functools import wraps
+import logging
+import time
 from typing import Any
 
 from .control_values import (

@@ -3,7 +3,11 @@ from __future__ import annotations
 from homeassistant.components.number import NumberEntity
 
 from .base import FroniusModbusBaseEntity
-from .const import INVERTER_NUMBER_TYPES, STORAGE_API_NUMBER_TYPES, STORAGE_MODBUS_NUMBER_TYPES
+from .const import (
+    INVERTER_NUMBER_TYPES,
+    STORAGE_API_NUMBER_TYPES,
+    STORAGE_MODBUS_NUMBER_TYPES,
+)
 from .hub import Hub
 from .platform_setup import (
     async_platform_context,

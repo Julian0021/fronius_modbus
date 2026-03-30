@@ -229,7 +229,7 @@ class HubCommandService:
             return
         self._require_api_battery_mode_manual("Target feed in")
 
-        power = -int(round(value))
+        power = -round(value)
         await self._hub._web_api_service.async_web_job(
             self._hub._webclient.set_battery_config,
             1,

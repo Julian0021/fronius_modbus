@@ -16,7 +16,7 @@ def _enabled_bool(value) -> bool:
 
 
 def _enabled_state(value) -> str:
-    return "Enabled" if _enabled_bool(value) else "Disabled"
+    return "enabled" if _enabled_bool(value) else "disabled"
 
 
 def _build_hub() -> tuple[SimpleNamespace, list[tuple[str, str]], list[str]]:

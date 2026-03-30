@@ -162,7 +162,7 @@ def test_descriptor_helpers_cover_entity_policies() -> None:
     coordinator = SimpleNamespace(
         data={
             "api_battery_mode_effective_raw": 1,
-            "power_factor_enable": "Enabled",
+            "power_factor_enable": "enabled",
             "power_factor": 0.97,
         }
     )
@@ -483,11 +483,11 @@ def test_number_platform_setup_builds_entities_with_availability_and_dispatch() 
 def test_select_switch_and_button_platforms_dispatch_real_descriptor_actions() -> None:
     hub = _FakeHub(
         data={
-            "ext_control_mode": "Auto",
-            "api_battery_mode": "Manual",
-            "ac_limit_enable": "Disabled",
-            "power_factor_enable": "Enabled",
-            "Conn": "Enabled",
+            "ext_control_mode": "auto",
+            "api_battery_mode": "manual",
+            "ac_limit_enable": "disabled",
+            "power_factor_enable": "enabled",
+            "Conn": "enabled",
             "api_solar_api_enabled": False,
             "api_charge_from_grid": False,
         },
@@ -517,7 +517,7 @@ def test_select_switch_and_button_platforms_dispatch_real_descriptor_actions() -
     assert solar_api_switch.available is True
     assert solar_api_switch.is_on is False
 
-    asyncio.run(ac_limit_enable.async_select_option("Enabled"))
+    asyncio.run(ac_limit_enable.async_select_option("enabled"))
     asyncio.run(grid_charge_switch.async_turn_on())
     asyncio.run(reset_button.async_press())
 

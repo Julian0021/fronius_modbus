@@ -140,7 +140,7 @@ class FroniusModbusWriteService:
         return await self._read_enable_raw(OUT_PF_SET_ENABLE_ADDRESS)
 
     def _set_ac_limit_enable_state(self, enable_raw: int) -> None:
-        self._facade.data["ac_limit_enable"] = AC_LIMIT_STATUS.get(enable_raw, "Unknown")
+        self._facade.data["ac_limit_enable"] = AC_LIMIT_STATUS.get(enable_raw, "unknown")
 
     def _set_ac_limit_control_state(self, enable_raw: int) -> None:
         self._facade.data["WMaxLim_Ena"] = self._facade._map_value(

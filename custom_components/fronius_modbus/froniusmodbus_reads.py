@@ -137,7 +137,7 @@ class FroniusModbusReadService:
         return max_power_w if max_power_w > 0 else None
 
     def _set_ac_limit_enable_state(self, enable_raw: int) -> None:
-        self._facade.data["ac_limit_enable"] = AC_LIMIT_STATUS.get(enable_raw, "Unknown")
+        self._facade.data["ac_limit_enable"] = AC_LIMIT_STATUS.get(enable_raw, "unknown")
 
     def _set_ac_limit_control_state(self, enable_raw: int) -> None:
         self._facade.data["WMaxLim_Ena"] = self._facade._map_value(
@@ -1150,9 +1150,9 @@ class FroniusModbusReadService:
         )
         if (
             ext_control_mode == StorageExtendedControlMode.CHARGE_FROM_GRID
-            and charge_status == "Discharging"
+            and charge_status == "discharging"
         ):
-            charge_status = "Charging"
+            charge_status = "charging"
 
         self._facade.data["charge_status"] = charge_status
         self._facade.data["soc_minimum"] = soc_minimum_value
@@ -1184,9 +1184,9 @@ class FroniusModbusReadService:
         )
         if (
             ext_control_mode == StorageExtendedControlMode.CHARGE_FROM_GRID
-            and mapped_control_mode == "Discharge"
+            and mapped_control_mode == "discharge"
         ):
-            mapped_control_mode = "Charge"
+            mapped_control_mode = "charge"
         if raw["discharge_power"] >= 0:
             self._facade.data["discharge_limit"] = raw["discharge_power"] / 100.0
             self._facade.data["grid_charge_power"] = 0
@@ -1355,7 +1355,7 @@ class FroniusModbusReadService:
         if time.monotonic() < self._facade._ac_limit_enable_mask_until:
             self._facade.data["ac_limit_enable"] = AC_LIMIT_STATUS.get(
                 CONTROL_STATE_ENABLED,
-                "Enabled",
+                "enabled",
             )
             return True
 

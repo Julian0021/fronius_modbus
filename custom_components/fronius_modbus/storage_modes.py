@@ -33,7 +33,7 @@ class StorageModePolicy:
 
 STORAGE_MODE_POLICIES: dict[StorageExtendedControlMode, StorageModePolicy] = {
     StorageExtendedControlMode.AUTO: StorageModePolicy(
-        label="Auto",
+        label="auto",
         modbus_control_mode=0,
         default_charge_limit=100,
         default_discharge_limit=100,
@@ -41,7 +41,7 @@ STORAGE_MODE_POLICIES: dict[StorageExtendedControlMode, StorageModePolicy] = {
         capabilities=frozenset(),
     ),
     StorageExtendedControlMode.PV_CHARGE_LIMIT: StorageModePolicy(
-        label="PV Charge Limit",
+        label="pv_charge_limit",
         modbus_control_mode=1,
         default_charge_limit=100,
         default_discharge_limit=100,
@@ -49,7 +49,7 @@ STORAGE_MODE_POLICIES: dict[StorageExtendedControlMode, StorageModePolicy] = {
         capabilities=frozenset({STORAGE_MODE_CAPABILITY_CHARGE_LIMIT}),
     ),
     StorageExtendedControlMode.DISCHARGE_LIMIT: StorageModePolicy(
-        label="Discharge Limit",
+        label="discharge_limit",
         modbus_control_mode=2,
         default_charge_limit=100,
         default_discharge_limit=100,
@@ -57,7 +57,7 @@ STORAGE_MODE_POLICIES: dict[StorageExtendedControlMode, StorageModePolicy] = {
         capabilities=frozenset({STORAGE_MODE_CAPABILITY_DISCHARGE_LIMIT}),
     ),
     StorageExtendedControlMode.PV_CHARGE_AND_DISCHARGE_LIMIT: StorageModePolicy(
-        label="PV Charge and Discharge Limit",
+        label="pv_charge_and_discharge_limit",
         modbus_control_mode=3,
         default_charge_limit=100,
         default_discharge_limit=100,
@@ -70,7 +70,7 @@ STORAGE_MODE_POLICIES: dict[StorageExtendedControlMode, StorageModePolicy] = {
         ),
     ),
     StorageExtendedControlMode.CHARGE_FROM_GRID: StorageModePolicy(
-        label="Charge from Grid",
+        label="charge_from_grid",
         modbus_control_mode=2,
         default_charge_limit=100,
         default_discharge_limit=0,
@@ -78,7 +78,7 @@ STORAGE_MODE_POLICIES: dict[StorageExtendedControlMode, StorageModePolicy] = {
         capabilities=frozenset({STORAGE_MODE_CAPABILITY_GRID_CHARGE_POWER}),
     ),
     StorageExtendedControlMode.DISCHARGE_TO_GRID: StorageModePolicy(
-        label="Discharge to Grid",
+        label="discharge_to_grid",
         modbus_control_mode=1,
         default_charge_limit=0,
         default_discharge_limit=100,
@@ -86,7 +86,7 @@ STORAGE_MODE_POLICIES: dict[StorageExtendedControlMode, StorageModePolicy] = {
         capabilities=frozenset({STORAGE_MODE_CAPABILITY_GRID_DISCHARGE_POWER}),
     ),
     StorageExtendedControlMode.BLOCK_DISCHARGING: StorageModePolicy(
-        label="Block Discharging",
+        label="block_discharging",
         modbus_control_mode=3,
         default_charge_limit=100,
         default_discharge_limit=0,
@@ -94,7 +94,7 @@ STORAGE_MODE_POLICIES: dict[StorageExtendedControlMode, StorageModePolicy] = {
         capabilities=frozenset({STORAGE_MODE_CAPABILITY_CHARGE_LIMIT}),
     ),
     StorageExtendedControlMode.BLOCK_CHARGING: StorageModePolicy(
-        label="Block Charging",
+        label="block_charging",
         modbus_control_mode=3,
         default_charge_limit=0,
         default_discharge_limit=100,

@@ -155,7 +155,7 @@ async def test_hub_command_service_api_battery_mode_refreshes_and_publishes() ->
         _command_lock=asyncio.Lock(),
         _webclient=SimpleNamespace(set_battery_config="set_battery_config"),
         data={
-            "api_battery_mode": "Auto",
+            "api_battery_mode": "auto",
             "api_battery_mode_effective_raw": 0,
             "soc_minimum": 23,
         },
@@ -171,7 +171,7 @@ async def test_hub_command_service_api_battery_mode_refreshes_and_publishes() ->
 
     await service.set_api_battery_mode(1)
 
-    assert hub.data["api_battery_mode"] == "Auto"
+    assert hub.data["api_battery_mode"] == "auto"
     assert calls == [
         (
             "web_job",

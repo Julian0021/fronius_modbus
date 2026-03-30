@@ -76,23 +76,23 @@ async def test_live_snapshot_decodes_expected_poll_values(live_modbus_registers)
 
     assert client.data["acpower"] == pytest.approx(2268.6)
     assert client.data["line_frequency"] == pytest.approx(50.03)
-    assert client.data["status"] == "Normal"
-    assert client.data["statusvendor"] == "Normal"
+    assert client.data["status"] == "normal"
+    assert client.data["statusvendor"] == "normal"
     assert client.data["events2"] == "None"
 
-    assert client.data["pv_connection"] == "Operating"
-    assert client.data["storage_connection"] == "Operating"
-    assert client.data["ecp_connection"] == "Connected"
+    assert client.data["pv_connection"] == "operating"
+    assert client.data["storage_connection"] == "operating"
+    assert client.data["ecp_connection"] == "connected"
     assert client.data["inverter_controls"] == "Power reduction,Constant power factor"
     assert client.data["isolation_resistance"] == 15
 
     assert client.data["max_power"] == 17500
     assert client.data["vref"] == 231
     assert client.data["vrefofs"] == 0
-    assert client.data["Conn"] == "Enabled"
-    assert client.data["WMaxLim_Ena"] == "Enabled"
-    assert client.data["ac_limit_enable"] == "Enabled"
-    assert client.data["power_factor_enable"] == "Enabled"
+    assert client.data["Conn"] == "enabled"
+    assert client.data["WMaxLim_Ena"] == "enabled"
+    assert client.data["ac_limit_enable"] == "enabled"
+    assert client.data["power_factor_enable"] == "enabled"
     assert client.data["power_factor"] == pytest.approx(0.9)
     assert client.data["ac_limit_rate_sf"] == -2
     assert client.data["power_factor_sf"] == -3
@@ -109,10 +109,10 @@ async def test_live_snapshot_decodes_expected_poll_values(live_modbus_registers)
 
     assert client.data["soc_minimum"] == 5
     assert client.data["soc"] == pytest.approx(72.9)
-    assert client.data["charge_status"] == "Charging"
-    assert client.data["grid_charging"] == "Enabled"
-    assert client.data["control_mode"] == "Auto"
-    assert client.data["ext_control_mode"] == "Auto"
+    assert client.data["charge_status"] == "charging"
+    assert client.data["grid_charging"] == "enabled"
+    assert client.data["control_mode"] == "auto"
+    assert client.data["ext_control_mode"] == "auto"
     assert client.data["charging_power"] == pytest.approx(100.0)
     assert client.data["discharging_power"] == pytest.approx(100.0)
 
@@ -125,4 +125,4 @@ async def test_live_snapshot_decodes_expected_poll_values(live_modbus_registers)
     assert client.data["meter_200_WphA"] == pytest.approx(-609.5)
     assert client.data["meter_200_WphB"] == pytest.approx(-560.9)
     assert client.data["meter_200_WphC"] == pytest.approx(-611.6)
-    assert client.data["grid_status"] == "On grid operating"
+    assert client.data["grid_status"] == "on_grid_operating"

@@ -143,6 +143,6 @@ async def test_read_inverter_storage_data_normalizes_charge_status_for_charge_fr
     )
 
     assert await service.read_inverter_storage_data() is True
-    assert service._facade.data["ext_control_mode"] == "Charge from Grid"
-    assert service._facade.data["control_mode"] == "Charge"
-    assert service._facade.data["charge_status"] == "Charging"
+    assert service._facade.data["ext_control_mode"] == "charge_from_grid"
+    assert service._facade.data["control_mode"] == "charge"
+    assert service._facade.data["charge_status"] == "charging"

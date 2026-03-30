@@ -16,4 +16,4 @@ def is_enabled(value: Any) -> bool:
 
 def enabled_state(value: Any) -> str:
     """Return the Home Assistant-friendly state string for an enabled flag."""
-    return "Enabled" if is_enabled(value) else "Disabled"
+    return "enabled" if is_enabled(value) else "disabled"

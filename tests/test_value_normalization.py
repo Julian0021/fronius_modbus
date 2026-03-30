@@ -11,5 +11,5 @@ def test_is_enabled_handles_common_string_inputs() -> None:
 
 
 def test_enabled_state_uses_shared_normalization() -> None:
-    assert enabled_state("yes") == "Enabled"
-    assert enabled_state(0) == "Disabled"
+    assert enabled_state("yes") == "enabled"
+    assert enabled_state(0) == "disabled"

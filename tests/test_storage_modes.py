@@ -22,8 +22,8 @@ def test_storage_mode_capability_sets_match_existing_ui_contract() -> None:
 
 
 def test_storage_mode_policy_exposes_select_options_and_web_sync_rules() -> None:
-    assert STORAGE_MODE_OPTIONS[0] == "Auto"
-    assert STORAGE_MODE_OPTIONS[4] == "Charge from Grid"
+    assert STORAGE_MODE_OPTIONS[0] == "auto"
+    assert STORAGE_MODE_OPTIONS[4] == "charge_from_grid"
 
     charge_from_grid = get_storage_mode_policy(StorageExtendedControlMode.CHARGE_FROM_GRID)
     assert charge_from_grid is not None

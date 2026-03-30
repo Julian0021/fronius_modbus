@@ -1,15 +1,10 @@
 from __future__ import annotations
 
-import logging
-
 from homeassistant import config_entries
 from homeassistant.const import CONF_HOST, CONF_NAME
 from homeassistant.core import callback
 
-from .config_data import (
-    form_setting_defaults,
-    sanitize_config_payload,
-)
+from .config_data import form_setting_defaults, sanitize_config_payload
 from .const import DOMAIN
 from .flow_helpers import (
     async_apply_requested_modbus_config,
@@ -18,8 +13,6 @@ from .flow_helpers import (
 )
 from .flow_steps import TokenFlowMixin, entry_defaults
 
-_LOGGER = logging.getLogger(__name__)
-
 
 class ConfigFlow(TokenFlowMixin, config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow."""
@@ -27,9 +20,6 @@ class ConfigFlow(TokenFlowMixin, config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 1
     MINOR_VERSION = 8
     CONNECTION_CLASS = config_entries.CONN_CLASS_LOCAL_POLL
-
-    def __init__(self) -> None:
-        self._pending_flow_state = None
 
     @staticmethod
     @callback

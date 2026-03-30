@@ -9,7 +9,7 @@ from homeassistant.const import CONF_HOST, CONF_NAME, CONF_PORT, CONF_SCAN_INTER
 from homeassistant.core import HomeAssistant
 
 from . import entry_reconfigure, hub, migrations, registry_maintenance
-from .config_data import entry_value
+from .config_data import merged_entry_config
 from .const import (
     API_USERNAME,
     CONF_INVERTER_UNIT_ID,
@@ -40,13 +40,13 @@ async def _async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
 
 async def async_setup_entry(hass: HomeAssistant, entry: HubConfigEntry) -> bool:
     """Set up Fronius Modbus from a config entry."""
-    name = entry_value(entry, CONF_NAME, DEFAULT_NAME)
-    host = entry_value(entry, CONF_HOST)
-    port = entry_value(entry, CONF_PORT, DEFAULT_PORT)
-    inverter_unit_id = entry_value(entry, CONF_INVERTER_UNIT_ID, DEFAULT_INVERTER_UNIT_ID)
-    scan_interval = entry_value(entry, CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
-    restrict_modbus_to_this_ip = entry_value(
-        entry,
+    config = merged_entry_config(entry)
+    name = config.get(CONF_NAME, DEFAULT_NAME)
+    host = config.get(CONF_HOST)
+    port = config.get(CONF_PORT, DEFAULT_PORT)
+    inverter_unit_id = config.get(CONF_INVERTER_UNIT_ID, DEFAULT_INVERTER_UNIT_ID)
+    scan_interval = config.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
+    restrict_modbus_to_this_ip = config.get(
         CONF_RESTRICT_MODBUS_TO_THIS_IP,
         DEFAULT_RESTRICT_MODBUS_TO_THIS_IP,
     )

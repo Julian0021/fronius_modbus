@@ -222,6 +222,45 @@ def validate_detected_hardware(runtime_hub: Hub) -> None:
         _LOGGER.warning("Untested model %s", model)
 
 
+async def _async_validate_runtime_hub(
+    runtime_hub: Hub,
+    *,
+    host: str,
+    apply_modbus_config: bool,
+    allow_unconfigured_modbus: bool,
+) -> None:
+    """Validate the Web API and Modbus topology for a prepared hub."""
+    try:
+        await runtime_hub.web_api_service.validate_web_api()
+        try:
+            await runtime_hub.bootstrap_service.init_data(
+                setup_coordinator=False,
+                apply_modbus_config=apply_modbus_config,
+            )
+        except FroniusError:
+            if not allow_unconfigured_modbus or apply_modbus_config:
+                raise
+            _LOGGER.info(
+                "Skipping full Modbus probe during validation for %s until the explicit apply step",
+                host,
+            )
+        else:
+            validate_detected_hardware(runtime_hub)
+    except ClientIpResolutionError as err:
+        raise CannotResolveLocalIp from err
+    except FroniusAuthError as err:
+        raise InvalidApiCredentials from err
+    except FroniusError as err:
+        _LOGGER.error(
+            "Cannot %s %s",
+            "apply Modbus configuration" if apply_modbus_config else "start hub",
+            err,
+        )
+        raise CannotConnect from err
+    finally:
+        runtime_hub.close()
+
+
 async def validate_input(
     hass: HomeAssistant,
     data: dict[str, Any],
@@ -242,31 +281,12 @@ async def validate_input(
         api_password=api_password,
         api_token=api_token,
     )
-    try:
-        await runtime_hub.web_api_service.validate_web_api()
-        try:
-            await runtime_hub.bootstrap_service.init_data(
-                setup_coordinator=False,
-                apply_modbus_config=False,
-            )
-        except FroniusError:
-            if not allow_unconfigured_modbus:
-                raise
-            _LOGGER.info(
-                "Skipping full Modbus probe during validation for %s until the explicit apply step",
-                data[CONF_HOST],
-            )
-        else:
-            validate_detected_hardware(runtime_hub)
-    except ClientIpResolutionError as err:
-        raise CannotResolveLocalIp from err
-    except FroniusAuthError as err:
-        raise InvalidApiCredentials from err
-    except FroniusError as err:
-        _LOGGER.error("Cannot start hub %s", err)
-        raise CannotConnect from err
-    finally:
-        runtime_hub.close()
+    await _async_validate_runtime_hub(
+        runtime_hub,
+        host=data[CONF_HOST],
+        apply_modbus_config=False,
+        allow_unconfigured_modbus=allow_unconfigured_modbus,
+    )
 
     return {"title": data[CONF_NAME]}
 
@@ -279,22 +299,12 @@ async def async_apply_modbus_config_and_validate(
 ) -> None:
     """Apply Modbus settings and revalidate against the live inverter."""
     runtime_hub = build_hub(hass, settings, api_token=api_token)
-    try:
-        await runtime_hub.web_api_service.validate_web_api()
-        await runtime_hub.bootstrap_service.init_data(
-            setup_coordinator=False,
-            apply_modbus_config=True,
-        )
-        validate_detected_hardware(runtime_hub)
-    except ClientIpResolutionError as err:
-        raise CannotResolveLocalIp from err
-    except FroniusAuthError as err:
-        raise InvalidApiCredentials from err
-    except FroniusError as err:
-        _LOGGER.error("Cannot apply Modbus configuration %s", err)
-        raise CannotConnect from err
-    finally:
-        runtime_hub.close()
+    await _async_validate_runtime_hub(
+        runtime_hub,
+        host=settings[CONF_HOST],
+        apply_modbus_config=True,
+        allow_unconfigured_modbus=False,
+    )
 
 
 async def async_apply_requested_modbus_config(

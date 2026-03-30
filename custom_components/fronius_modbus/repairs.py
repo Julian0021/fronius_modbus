@@ -37,7 +37,6 @@ class FroniusReconfigureRepairFlow(TokenFlowMixin, RepairsFlow):
 
     def __init__(self, entry_id: str) -> None:
         self._entry_id = entry_id
-        self._pending_flow_state = None
 
     def _issue_id(self) -> str:
         return f"{MIGRATION_RECONFIGURE_ISSUE_ID_PREFIX}{self._entry_id}"
@@ -107,7 +106,6 @@ class FroniusDisableSolarApiRepairFlow(RepairsFlow):
 
     def __init__(self, entry_id: str) -> None:
         self._entry_id = entry_id
-        self._pending_flow_state = None
 
     def _issue_id(self) -> str:
         return f"{SOLAR_API_LOW_FIRMWARE_ISSUE_ID_PREFIX}{self._entry_id}"

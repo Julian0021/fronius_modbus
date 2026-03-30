@@ -27,8 +27,8 @@ PY
 )"
 
 rm -rf "$staging_dir"
-mkdir -p "$staging_dir/custom_components" "$output_dir"
-cp -R "$repo_root/$package_root" "$staging_dir/custom_components/"
+mkdir -p "$staging_dir" "$output_dir"
+cp -R "$repo_root/$package_root/." "$staging_dir/"
 
 find "$staging_dir" -type d -name "__pycache__" -prune -exec rm -rf {} +
 find "$staging_dir" -type f \( -name "*.pyc" -o -name ".DS_Store" \) -delete
@@ -36,7 +36,7 @@ find "$staging_dir" -type f \( -name "*.pyc" -o -name ".DS_Store" \) -delete
 (
     cd "$staging_dir"
     rm -f "$output_dir/$archive_name"
-    zip -qr "$output_dir/$archive_name" custom_components
+    zip -qr "$output_dir/$archive_name" .
 )
 
 python - "$output_dir/$archive_name" <<'PY'
@@ -46,7 +46,6 @@ import sys
 import zipfile
 
 archive_path = sys.argv[1]
-prefix = "custom_components/fronius_modbus/"
 
 with zipfile.ZipFile(archive_path) as archive:
     names = archive.namelist()
@@ -54,12 +53,15 @@ with zipfile.ZipFile(archive_path) as archive:
 if not names:
     raise SystemExit("package is empty")
 
-if "custom_components/fronius_modbus/manifest.json" not in names:
+if "manifest.json" not in names:
     raise SystemExit("manifest.json is missing from package")
 
-allowed_roots = {"custom_components/"}
 unexpected = [
-    name for name in names if name not in allowed_roots and not name.startswith(prefix)
+    name
+    for name in names
+    if name.startswith("custom_components/")
+    or name.startswith("tests/")
+    or name.startswith(".github/")
 ]
 if unexpected:
     raise SystemExit(f"unexpected package entries: {unexpected}")

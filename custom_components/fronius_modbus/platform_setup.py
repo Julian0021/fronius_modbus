@@ -3,13 +3,106 @@ from __future__ import annotations
 
 from typing import Any, cast
 
-from .const import AVAILABILITY_POLICIES, AvailabilityPolicy
+from .const import (
+    AVAILABILITY_POLICIES,
+    DESCRIPTOR_SERVICE_NAMES,
+    DISPLAY_SCALE_NAMES,
+    ENTITY_DESCRIPTOR_COLLECTIONS,
+    VALUE_TRANSFORM_NAMES,
+    AvailabilityPolicy,
+)
+from .hub_commands import HubCommandService
+from .hub_web_api import HubWebApiService
 from .storage_modes import storage_mode_supports
 from .translation import async_ensure_translation_cache
+
+_VALID_DESCRIPTOR_CATALOG = False
+_DESCRIPTOR_SERVICE_ACTIONS = {
+    "command_service": frozenset(
+        name
+        for name, member in vars(HubCommandService).items()
+        if callable(member) and not name.startswith("_")
+    ),
+    "web_api_service": frozenset(
+        name
+        for name, member in vars(HubWebApiService).items()
+        if callable(member) and not name.startswith("_")
+    ),
+}
+
+
+def _descriptor_key(description) -> str:
+    return str(getattr(description, "key", getattr(description, "translation_key", "<unknown>")))
+
+
+def _validate_service_action(
+    description,
+    *,
+    service_attr: str,
+    action_attr: str,
+) -> None:
+    service_name = getattr(description, service_attr, None)
+    action_name = getattr(description, action_attr, None)
+    if service_name is None:
+        return
+    if service_name not in DESCRIPTOR_SERVICE_NAMES:
+        raise ValueError(
+            f"Unsupported {service_attr} {service_name!r} for descriptor {_descriptor_key(description)!r}"
+        )
+    if action_name is None:
+        raise ValueError(
+            f"Descriptor {_descriptor_key(description)!r} declares {service_attr} without {action_attr}"
+        )
+    if action_name not in _DESCRIPTOR_SERVICE_ACTIONS[service_name]:
+        raise ValueError(
+            f"Unsupported {action_attr} {action_name!r} for descriptor {_descriptor_key(description)!r}"
+        )
+
+
+def _validate_descriptor_behavior(description) -> None:
+    _resolve_descriptor_availability(description)
+    _validate_service_action(
+        description,
+        service_attr="action_service",
+        action_attr="action",
+    )
+    _validate_service_action(
+        description,
+        service_attr="turn_on_service",
+        action_attr="turn_on_action",
+    )
+    _validate_service_action(
+        description,
+        service_attr="turn_off_service",
+        action_attr="turn_off_action",
+    )
+
+    display_scale = getattr(description, "display_scale", None)
+    if display_scale is not None and display_scale not in DISPLAY_SCALE_NAMES:
+        raise ValueError(
+            f"Unsupported display_scale {display_scale!r} for descriptor {_descriptor_key(description)!r}"
+        )
+
+    value_transform = getattr(description, "value_transform", None)
+    if value_transform is not None and value_transform not in VALUE_TRANSFORM_NAMES:
+        raise ValueError(
+            f"Unsupported value_transform {value_transform!r} for descriptor {_descriptor_key(description)!r}"
+        )
+
+
+def validate_descriptor_catalog() -> None:
+    global _VALID_DESCRIPTOR_CATALOG
+    if _VALID_DESCRIPTOR_CATALOG:
+        return
+    for descriptions in ENTITY_DESCRIPTOR_COLLECTIONS:
+        for description in descriptions:
+            _validate_descriptor_behavior(description)
+    _VALID_DESCRIPTOR_CATALOG = True
 
 
 async def async_platform_context(hass, config_entry):
     """Return the shared hub/coordinator pair for a platform setup."""
+    validate_descriptor_catalog()
     await async_ensure_translation_cache(hass)
     hub = config_entry.runtime_data
     return hub, hub.coordinator
@@ -32,7 +125,7 @@ def entity_description_kwargs(
     **extra,
 ):
     """Build the common constructor kwargs shared by descriptor-backed entities."""
-    _resolve_descriptor_availability(description)
+    _validate_descriptor_behavior(description)
 
     kwargs = {
         "coordinator": coordinator,

@@ -6,6 +6,7 @@ from types import SimpleNamespace
 import pytest
 from homeassistant.core import HomeAssistant
 
+import custom_components.fronius_modbus.platform_setup as platform_setup_module
 from custom_components.fronius_modbus import (
     button as button_platform,
 )
@@ -233,6 +234,91 @@ def test_descriptor_helpers_reject_unknown_availability_policies() -> None:
             ),
             coordinator=SimpleNamespace(data={}),
             description=invalid_description,
+        )
+
+
+@pytest.mark.parametrize(
+    ("description", "message"),
+    [
+        (
+            SimpleNamespace(
+                translation_key="invalid_service",
+                key="invalid_service",
+                action_service="definitely_not_real",
+                action="set_mode",
+            ),
+            "Unsupported action_service",
+        ),
+        (
+            SimpleNamespace(
+                translation_key="invalid_action",
+                key="invalid_action",
+                action_service="command_service",
+                action="definitely_not_real",
+            ),
+            "Unsupported action",
+        ),
+        (
+            SimpleNamespace(
+                translation_key="invalid_scale",
+                key="invalid_scale",
+                display_scale="definitely_not_real",
+            ),
+            "Unsupported display_scale",
+        ),
+        (
+            SimpleNamespace(
+                translation_key="invalid_transform",
+                key="invalid_transform",
+                value_transform="definitely_not_real",
+            ),
+            "Unsupported value_transform",
+        ),
+    ],
+)
+def test_entity_description_kwargs_reject_invalid_descriptor_behavior_strings(
+    description: SimpleNamespace,
+    message: str,
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        entity_description_kwargs(
+            coordinator="coordinator",
+            device_info="device",
+            description=description,
+        )
+
+
+def test_async_platform_context_validates_descriptor_catalog(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    invalid_description = SimpleNamespace(
+        translation_key="invalid_action",
+        key="invalid_action",
+        action_service="command_service",
+        action="definitely_not_real",
+    )
+
+    async def _fake_ensure_translation_cache(_hass) -> None:
+        return None
+
+    monkeypatch.setattr(
+        platform_setup_module,
+        "ENTITY_DESCRIPTOR_COLLECTIONS",
+        ((invalid_description,),),
+    )
+    monkeypatch.setattr(platform_setup_module, "_VALID_DESCRIPTOR_CATALOG", False)
+    monkeypatch.setattr(
+        platform_setup_module,
+        "async_ensure_translation_cache",
+        _fake_ensure_translation_cache,
+    )
+
+    with pytest.raises(ValueError, match="Unsupported action"):
+        asyncio.run(
+            platform_setup_module.async_platform_context(
+                HomeAssistant(),
+                SimpleNamespace(runtime_data=object()),
+            )
         )
 
 

@@ -61,6 +61,18 @@ AvailabilityPolicy: TypeAlias = Literal[
     "storage_mode",
 ]
 
+DescriptorServiceName: TypeAlias = Literal[
+    "command_service",
+    "web_api_service",
+]
+
+DisplayScaleName: TypeAlias = Literal[
+    "charge_rate",
+    "discharge_rate",
+]
+
+ValueTransformName: TypeAlias = Literal["round_int"]
+
 AVAILABILITY_POLICIES: tuple[AvailabilityPolicy, ...] = (
     "always",
     "web_api",
@@ -70,6 +82,18 @@ AVAILABILITY_POLICIES: tuple[AvailabilityPolicy, ...] = (
     "storage_mode",
 )
 
+DESCRIPTOR_SERVICE_NAMES: tuple[DescriptorServiceName, ...] = (
+    "command_service",
+    "web_api_service",
+)
+
+DISPLAY_SCALE_NAMES: tuple[DisplayScaleName, ...] = (
+    "charge_rate",
+    "discharge_rate",
+)
+
+VALUE_TRANSFORM_NAMES: tuple[ValueTransformName, ...] = ("round_int",)
+
 
 @dataclass(frozen=True, slots=True)
 class SelectEntitySpec:
@@ -78,7 +102,7 @@ class SelectEntitySpec:
     options: dict[int, str]
     action: str | None = None
     availability: AvailabilityPolicy = "always"
-    action_service: str | None = None
+    action_service: DescriptorServiceName | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -92,12 +116,12 @@ class NumberEntitySpec:
     unit: str | None
     max_key: str | None = None
     action: str | None = None
-    value_transform: str | None = None
-    display_scale: str | None = None
+    value_transform: ValueTransformName | None = None
+    display_scale: DisplayScaleName | None = None
     availability: AvailabilityPolicy = "always"
     mode_capability: str | None = None
     available_modes: tuple[int, ...] | None = None
-    action_service: str | None = None
+    action_service: DescriptorServiceName | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -111,8 +135,8 @@ class ToggleEntitySpec:
     turn_off_action: str | None = None
     turn_off_kwargs: dict[str, Any] = field(default_factory=dict)
     availability: AvailabilityPolicy = "always"
-    turn_on_service: str | None = None
-    turn_off_service: str | None = None
+    turn_on_service: DescriptorServiceName | None = None
+    turn_off_service: DescriptorServiceName | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -123,7 +147,7 @@ class ButtonEntitySpec:
     entity_category: EntityCategory | None = None
     action: str | None = None
     availability: AvailabilityPolicy = "always"
-    action_service: str | None = None
+    action_service: DescriptorServiceName | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -388,6 +412,18 @@ INVERTER_API_BUTTON_TYPES = (
         availability="web_api",
         action_service="web_api_service",
     ),
+)
+
+ENTITY_DESCRIPTOR_COLLECTIONS: tuple[tuple[Any, ...], ...] = (
+    STORAGE_MODBUS_SELECT_TYPES,
+    STORAGE_API_SELECT_TYPES,
+    STORAGE_API_SWITCH_TYPES,
+    STORAGE_MODBUS_NUMBER_TYPES,
+    STORAGE_API_NUMBER_TYPES,
+    INVERTER_NUMBER_TYPES,
+    INVERTER_SELECT_TYPES,
+    INVERTER_API_SWITCH_TYPES,
+    INVERTER_API_BUTTON_TYPES,
 )
 
 INVERTER_SENSOR_TYPES = {

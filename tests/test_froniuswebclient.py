@@ -135,7 +135,7 @@ def test_get_inverter_info_parses_live_payload(monkeypatch) -> None:
 
 def test_get_storage_info_parses_live_payload(monkeypatch) -> None:
     client = FroniusWebClient("fixture-host")
-    monkeypatch.setattr(client, "_get_json", lambda path: STORAGE_READABLE_PAYLOAD)
+    monkeypatch.setattr(client, "_get_public_json", lambda path: STORAGE_READABLE_PAYLOAD)
 
     storage_info = client.get_storage_info()
 
@@ -144,6 +144,26 @@ def test_get_storage_info_parses_live_payload(monkeypatch) -> None:
         "model": "HVB",
         "serial": "BATTERY-SERIAL-01",
         "cell_temperature": pytest.approx(14.45),
+        "detected": True,
+    }
+
+
+def test_get_storage_info_marks_missing_identity_as_undetected(monkeypatch) -> None:
+    client = FroniusWebClient("fixture-host")
+    monkeypatch.setattr(
+        client,
+        "_get_public_json",
+        lambda path: {"Body": {"Data": {"storage_node": {"attributes": {}, "channels": {}}}}},
+    )
+
+    storage_info = client.get_storage_info()
+
+    assert storage_info == {
+        "manufacturer": None,
+        "model": "Battery Storage",
+        "serial": None,
+        "cell_temperature": None,
+        "detected": False,
     }
 
 
@@ -153,7 +173,7 @@ def test_get_storage_info_propagates_request_failure(monkeypatch) -> None:
     def _raise_request_error(_path: str):
         raise RequestException("boom")
 
-    monkeypatch.setattr(client, "_get_json", _raise_request_error)
+    monkeypatch.setattr(client, "_get_public_json", _raise_request_error)
 
     with pytest.raises(RequestException):
         client.get_storage_info()
@@ -165,7 +185,7 @@ def test_get_storage_info_propagates_auth_failure(monkeypatch) -> None:
     def _raise_auth_error(_path: str):
         raise FroniusWebAuthError("auth failed")
 
-    monkeypatch.setattr(client, "_get_json", _raise_auth_error)
+    monkeypatch.setattr(client, "_get_public_json", _raise_auth_error)
 
     with pytest.raises(FroniusWebAuthError):
         client.get_storage_info()
@@ -173,7 +193,7 @@ def test_get_storage_info_propagates_auth_failure(monkeypatch) -> None:
 
 def test_get_storage_info_raises_read_error_for_unexpected_payload_shape(monkeypatch) -> None:
     client = FroniusWebClient("fixture-host")
-    monkeypatch.setattr(client, "_get_json", lambda path: {"unexpected": "payload"})
+    monkeypatch.setattr(client, "_get_public_json", lambda path: {"unexpected": "payload"})
 
     with pytest.raises(FroniusReadError):
         client.get_storage_info()

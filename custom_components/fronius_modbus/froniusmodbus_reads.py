@@ -52,7 +52,6 @@ from .froniusmodbusclient_const import (
     MPPT_UNAVAILABLE_U32,
     NAMEPLATE_ADDRESS,
     STORAGE_CONTROL_MODE,
-    STORAGE_DER_TYPE,
     STORAGE_EXT_CONTROL_MODE,
     STORAGE_MODEL_LENGTH,
     SUNSPEC_END_MODEL_ID,
@@ -399,12 +398,6 @@ class FroniusModbusReadService:
             ),
         )
 
-        has_storage_ratings = any(
-            self._facade.is_numeric(value) and 0 < value < 65535
-            for value in [raw["WHRtg"], raw["MaxChaRte"], raw["MaxDisChaRte"]]
-        )
-        if raw["DERTyp"] == STORAGE_DER_TYPE or has_storage_ratings:
-            self._facade.storage_configured = True
         self._facade.data["DERTyp"] = raw["DERTyp"]
         self._facade._set_calculated("WHRtg", raw["WHRtg"], raw["WHRtg_SF"], 0)
         self._facade._set_calculated("MaxChaRte", raw["MaxChaRte"], raw["MaxChaRte_SF"], 0)
@@ -667,7 +660,6 @@ class FroniusModbusReadService:
         self._facade.data["storage_model_address"] = int(storage_model["data_address"])
         if storage_model_length == STORAGE_MODEL_LENGTH:
             self._facade._storage_address = int(storage_model["data_address"])
-            self._facade.storage_configured = True
 
     def _resolve_mppt_module_layout(
         self,
@@ -1093,6 +1085,9 @@ class FroniusModbusReadService:
     @_safe_read("storage")
     async def read_inverter_storage_data(self):
         """Read storage control data from the inverter storage model."""
+        if not self._facade.storage_configured:
+            return True
+
         regs = await self._facade.get_registers(
             unit_id=self._facade._inverter_unit_id,
             address=self._facade._storage_address,
@@ -1115,9 +1110,6 @@ class FroniusModbusReadService:
                 ("charge_grid_set", 15, 1, dt.UINT16),
             ),
         )
-
-        if self._facade.is_numeric(raw["max_charge"]) and raw["max_charge"] > 0:
-            self._facade.storage_configured = True
 
         soc_minimum_value = self._facade.calculate_value(
             raw["minimum_reserve"],

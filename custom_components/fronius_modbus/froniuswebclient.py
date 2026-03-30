@@ -133,6 +133,7 @@ def _parse_storage_readable(payload: Any) -> dict[str, Any]:
     """Normalize battery readable payloads into a stable identity/temperature shape."""
     info = _parse_storage_info(None)
     info["cell_temperature"] = None
+    info["detected"] = False
 
     nodes, _ = _body_data(payload, "Body", "Data")
     if not isinstance(nodes, dict):
@@ -150,6 +151,16 @@ def _parse_storage_readable(payload: Any) -> dict[str, Any]:
         value = channels.get("BAT_TEMPERATURE_CELL_F64")
         if isinstance(value, (int, float)):
             info["cell_temperature"] = float(value)
+
+    info["detected"] = bool(
+        info.get("manufacturer")
+        or info.get("serial")
+        or (
+            isinstance(info.get("model"), str)
+            and info["model"] != "Battery Storage"
+        )
+        or info.get("cell_temperature") is not None
+    )
     return info
 
 
@@ -534,7 +545,7 @@ class FroniusWebClient:
         return self._get_json("/api/config/solar_api")
 
     def get_storage_info(self) -> dict[str, Any]:
-        payload = self._get_json("/api/components/BatteryManagementSystem/readable")
+        payload = self._get_public_json("/api/components/BatteryManagementSystem/readable")
         _require_body_data(payload, "/api/components/BatteryManagementSystem/readable")
         return _parse_storage_readable(payload)
 

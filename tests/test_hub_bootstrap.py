@@ -19,6 +19,7 @@ class _BootstrapClient:
         self.meter_unit_ids = [200]
         self.primary_meter_unit_id = 200
         self.meter_tcp_connections: dict[int, dict[str, int | str]] = {}
+        self.storage_configured = False
         self.runtime_service = SimpleNamespace(init_data=self._init_runtime_data)
 
     async def _init_runtime_data(self) -> None:
@@ -27,6 +28,7 @@ class _BootstrapClient:
                 "runtime_init",
                 list(self.meter_unit_ids),
                 self.primary_meter_unit_id,
+                self.storage_configured,
             )
         )
 
@@ -58,6 +60,8 @@ class _BootstrapHub:
         calls: list[object],
         *,
         power_meter_info=None,
+        storage_info=None,
+        web_api_configured: bool = True,
     ) -> None:
         self._calls = calls
         self._hass = HomeAssistant()
@@ -65,6 +69,8 @@ class _BootstrapHub:
         self._auto_enable_modbus = False
         self._host = "inverter.local"
         self._power_meter_info = power_meter_info
+        self._storage_info = storage_info
+        self._web_api_configured = web_api_configured
         self._webclient = SimpleNamespace(
             get_power_meter_info="get_power_meter_info",
             get_storage_info="get_storage_info",
@@ -82,11 +88,11 @@ class _BootstrapHub:
 
     @property
     def web_api_configured(self) -> bool:
-        return True
+        return self._web_api_configured
 
     @property
     def storage_configured(self) -> bool:
-        return True
+        return bool(self._client.storage_configured)
 
     @property
     def meter_configured(self) -> bool:
@@ -119,11 +125,12 @@ class _BootstrapHub:
                 "locations_by_unit_id": {200: 0},
             }
         if func == "get_storage_info":
-            return {
+            return self._storage_info or {
                 "manufacturer": "BYD",
                 "model": "Battery Box",
                 "serial": "serial-1",
                 "cell_temperature": 23.5,
+                "detected": True,
             }
         return None
 
@@ -148,15 +155,97 @@ async def test_bootstrap_service_runs_named_startup_steps(monkeypatch) -> None:
         "check_pymodbus_version",
         ("async_web_job", "get_power_meter_info", (200,), {}),
         ("set_meter_unit_ids", [200], 200),
-        ("runtime_init", [200], 200),
-        ("set_meter_value", 200, "phase_count", 3),
-        ("set_meter_value", 200, "location", 0),
         "reset_storage_info",
         ("async_web_job", "get_storage_info", (), {}),
         ("set_storage_info", "BYD", "Battery Box", "serial-1"),
         ("storage_state.set", "storage_temperature", 23.5),
+        ("runtime_init", [200], 200, True),
+        ("set_meter_value", 200, "phase_count", 3),
+        ("set_meter_value", 200, "location", 0),
         "refresh_web_data",
     ]
+    assert hub.storage_configured is True
+
+
+async def test_bootstrap_service_uses_public_storage_detection_without_web_api_auth(
+    monkeypatch,
+) -> None:
+    calls: list[object] = []
+    hub = _BootstrapHub(calls, web_api_configured=False)
+    hub._webclient = None
+    service = HubBootstrapService(hub)
+
+    monkeypatch.setattr(
+        hub_bootstrap_module,
+        "check_pymodbus_version",
+        lambda: calls.append("check_pymodbus_version"),
+    )
+
+    async def _fake_executor_job(func, *args):
+        func_name = getattr(func, "__name__", "<callable>")
+        calls.append(("executor_job", func_name, args))
+        if func_name == "<lambda>":
+            return func(*args)
+        return {
+            "manufacturer": "BYD",
+            "model": "Battery Box",
+            "serial": "serial-1",
+            "cell_temperature": 23.5,
+            "detected": True,
+        }
+
+    monkeypatch.setattr(hub._hass, "async_add_executor_job", _fake_executor_job)
+
+    await service.init_data(setup_coordinator=False)
+
+    assert calls == [
+        ("executor_job", "<lambda>", ()),
+        "check_pymodbus_version",
+        "reset_storage_info",
+        ("executor_job", "get_storage_info", ()),
+        ("set_storage_info", "BYD", "Battery Box", "serial-1"),
+        ("storage_state.set", "storage_temperature", 23.5),
+        ("runtime_init", [200], 200, True),
+    ]
+    assert hub.storage_configured is True
+
+
+async def test_bootstrap_service_skips_storage_registration_when_public_payload_is_undetected(
+    monkeypatch,
+) -> None:
+    calls: list[object] = []
+    hub = _BootstrapHub(
+        calls,
+        storage_info={
+            "manufacturer": None,
+            "model": "Battery Storage",
+            "serial": None,
+            "cell_temperature": None,
+            "detected": False,
+        },
+    )
+    service = HubBootstrapService(hub)
+
+    monkeypatch.setattr(
+        hub_bootstrap_module,
+        "check_pymodbus_version",
+        lambda: calls.append("check_pymodbus_version"),
+    )
+
+    await service.init_data(setup_coordinator=False)
+
+    assert calls == [
+        "check_pymodbus_version",
+        ("async_web_job", "get_power_meter_info", (200,), {}),
+        ("set_meter_unit_ids", [200], 200),
+        "reset_storage_info",
+        ("async_web_job", "get_storage_info", (), {}),
+        ("runtime_init", [200], 200, False),
+        ("set_meter_value", 200, "phase_count", 3),
+        ("set_meter_value", 200, "location", 0),
+        "refresh_web_data",
+    ]
+    assert hub.storage_configured is False
 
 
 async def test_bootstrap_service_ignores_malformed_power_meter_topology(monkeypatch) -> None:
@@ -184,7 +273,7 @@ async def test_bootstrap_service_ignores_malformed_power_meter_topology(monkeypa
         isinstance(call, tuple) and call[0] == "set_meter_unit_ids"
         for call in calls
     )
-    assert ("runtime_init", [200], 200) in calls
+    assert ("runtime_init", [200], 200, True) in calls
     assert hub.meter_unit_ids == [200]
     assert hub.primary_meter_unit_id == 200
     assert ("set_meter_value", 200, "phase_count", 3) in calls
@@ -218,8 +307,9 @@ async def test_bootstrap_service_applies_validated_meter_topology_before_runtime
         "check_pymodbus_version",
         ("async_web_job", "get_power_meter_info", (200,), {}),
         ("set_meter_unit_ids", [200, 240], None),
-        ("runtime_init", [200, 240], 200),
+        "reset_storage_info",
     ]
+    assert ("runtime_init", [200, 240], 200, True) in calls
     assert hub.meter_unit_ids == [200, 240]
     assert hub.primary_meter_unit_id == 200
     assert ("set_meter_value", 240, "phase_count", 1) in calls

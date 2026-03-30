@@ -40,7 +40,7 @@ async def test_init_data_discovers_live_device_layout(live_modbus_registers) -> 
     assert await client.runtime_service.init_data() is True
 
     assert client.mppt_configured is True
-    assert client.storage_configured is True
+    assert client.storage_configured is False
     assert client.meter_configured is True
     assert client.primary_meter_unit_id == 200
     assert client._meter_unit_ids == [200]
@@ -103,19 +103,19 @@ async def test_live_snapshot_decodes_expected_poll_values(live_modbus_registers)
     assert client.data["module1_power"] == 5498
     assert client.data["module2_power"] == 5293
     assert client.data["module3_power"] is None
-    assert client.data["storage_charge_module"] == 4
-    assert client.data["storage_charge_power"] == 8583
-    assert client.data["storage_discharge_module"] == 5
-    assert client.data["storage_discharge_power"] == 0
+    assert client.data["storage_charge_module"] is None
+    assert client.data["storage_charge_power"] is None
+    assert client.data["storage_discharge_module"] is None
+    assert client.data["storage_discharge_power"] is None
 
-    assert client.data["soc_minimum"] == 5
-    assert client.data["soc"] == pytest.approx(72.9)
-    assert client.data["charge_status"] == "charging"
-    assert client.data["grid_charging"] == "enabled"
-    assert client.data["control_mode"] == "auto"
-    assert client.data["ext_control_mode"] == "auto"
-    assert client.data["charging_power"] == pytest.approx(100.0)
-    assert client.data["discharging_power"] == pytest.approx(100.0)
+    assert "soc_minimum" not in client.data
+    assert "soc" not in client.data
+    assert "charge_status" not in client.data
+    assert "grid_charging" not in client.data
+    assert "control_mode" not in client.data
+    assert "ext_control_mode" not in client.data
+    assert "charging_power" not in client.data
+    assert "discharging_power" not in client.data
 
     assert client.data["meter_200_manufacturer"] == "Fronius"
     assert client.data["meter_200_model"] == "Smart Meter TS 65A-3"
@@ -127,6 +127,7 @@ async def test_live_snapshot_decodes_expected_poll_values(live_modbus_registers)
     assert client.data["meter_200_WphB"] == pytest.approx(-560.9)
     assert client.data["meter_200_WphC"] == pytest.approx(-611.6)
     assert client.data["grid_status"] == "on_grid_operating"
+    assert client.storage_configured is False
 
 
 @pytest.mark.asyncio

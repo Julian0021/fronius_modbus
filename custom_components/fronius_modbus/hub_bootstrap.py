@@ -10,7 +10,9 @@ from pathlib import Path
 from homeassistant.config_entries import ConfigEntry
 from packaging import version as pkg_version
 from packaging.requirements import InvalidRequirement, Requirement
+from requests import RequestException
 
+from .froniuswebclient import FroniusWebClient
 from .integration_errors import FroniusDependencyError, FroniusReadError
 
 _LOGGER = logging.getLogger(__name__)
@@ -92,10 +94,10 @@ class HubBootstrapService:
         await self._async_apply_modbus_config(apply_modbus_config)
         meter_topology = await self._async_discover_meter_topology()
         self._apply_effective_meter_topology(meter_topology)
+        await self._async_discover_storage_identity()
         await self._hub._client.runtime_service.init_data()
         self._apply_meter_topology(meter_topology)
         self._warn_missing_primary_meter()
-        await self._async_enrich_storage_identity()
         await self._async_refresh_initial_web_state()
         await self._async_setup_coordinator(
             config_entry=config_entry,
@@ -292,28 +294,35 @@ class HubBootstrapService:
                 self._hub.primary_meter_unit_id,
             )
 
-    async def _async_enrich_storage_identity(self) -> None:
-        if not self._hub.storage_configured:
-            return
-
+    async def _async_discover_storage_identity(self) -> None:
+        """Detect storage via the public readable endpoint and cache its identity."""
         self._hub._client.reset_storage_info()
-        if not self._hub.web_api_configured:
-            return
+        self._hub._client.storage_configured = False
+
+        webclient = self._hub._webclient
+        if webclient is None:
+            webclient = FroniusWebClient(self._hub._host)
 
         try:
-            storage_info = await self._hub.web_api_service.async_web_job(
-                self._hub._webclient.get_storage_info
-            )
-        except FroniusReadError as err:
+            if self._hub._webclient is None:
+                storage_info = await self._hub._hass.async_add_executor_job(
+                    webclient.get_storage_info
+                )
+            else:
+                storage_info = await self._hub.web_api_service.async_web_job(
+                    webclient.get_storage_info
+                )
+        except (FroniusReadError, RequestException) as err:
             _LOGGER.debug(
-                "Skipping storage identity enrichment for %s because the web payload could not be parsed: %s",
+                "Storage was not detected on %s via the public BatteryManagementSystem payload: %s",
                 self._hub._host,
                 err,
             )
             return
-        if not isinstance(storage_info, dict):
+        if not isinstance(storage_info, dict) or not storage_info.get("detected"):
             return
 
+        self._hub._client.storage_configured = True
         self._hub._client.set_storage_info(
             manufacturer=storage_info.get("manufacturer"),
             model=storage_info.get("model"),

@@ -15,7 +15,12 @@ from custom_components.fronius_modbus.storage_modes import (
 
 
 class _StorageReadFacade:
-    def __init__(self, raw: dict[str, int]) -> None:
+    def __init__(
+        self,
+        raw: dict[str, int],
+        *,
+        storage_configured: bool = True,
+    ) -> None:
         self._host = "fixture-host"
         self._port = 502
         self._inverter_unit_id = 1
@@ -25,7 +30,7 @@ class _StorageReadFacade:
         )
         self._raw = raw
         self.data: dict[str, object] = {}
-        self.storage_configured = False
+        self.storage_configured = storage_configured
         self.storage_extended_control_mode = 0
 
     async def get_registers(self, *, unit_id, address, count, retries=1):
@@ -170,6 +175,30 @@ async def test_read_inverter_storage_data_passes_charge_grid_flag_to_mode_deriva
         "control_mode_label": "charge",
         "charge_status_label": "charging",
     }
+
+
+@pytest.mark.asyncio
+async def test_read_inverter_storage_data_is_noop_without_storage_detection() -> None:
+    service = FroniusModbusReadService(
+        _StorageReadFacade(
+            {
+                "max_charge": 1,
+                "WChaGra": 100,
+                "WDisChaGra": 0,
+                "storage_control_mode": 1,
+                "minimum_reserve": 500,
+                "charge_state": 7000,
+                "charge_status": 4,
+                "discharge_power": 0,
+                "charge_power": 100,
+                "charge_grid_set": 1,
+            },
+            storage_configured=False,
+        )
+    )
+
+    assert await service.read_inverter_storage_data() is True
+    assert service._facade.data == {}
 
 
 @pytest.mark.asyncio

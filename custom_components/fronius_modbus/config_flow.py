@@ -16,9 +16,6 @@ from .flow_steps import TokenFlowMixin, entry_defaults
 
 class ConfigFlow(TokenFlowMixin, config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow."""
-
-    VERSION = 1
-    MINOR_VERSION = 8
     CONNECTION_CLASS = config_entries.CONN_CLASS_LOCAL_POLL
 
     @staticmethod

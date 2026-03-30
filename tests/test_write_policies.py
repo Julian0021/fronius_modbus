@@ -18,6 +18,7 @@ from custom_components.fronius_modbus.froniusmodbusclient_const import (
 )
 from custom_components.fronius_modbus.hub_commands import HubCommandService
 from custom_components.fronius_modbus.hub_web_api import HubWebApiService
+from custom_components.fronius_modbus.storage_modes import StorageExtendedControlMode
 
 
 class _WriteFacade:
@@ -105,6 +106,32 @@ async def test_storage_writes_use_named_protocol_offsets() -> None:
         (1, 40300 + CHARGE_RATE_OFFSET, 2000),
     ]
     assert facade.storage_refreshes == 4
+
+
+async def test_set_extended_mode_writes_distinct_grid_mode_control_values() -> None:
+    charge_facade = _WriteFacade()
+    charge_service = FroniusModbusWriteService(charge_facade)
+
+    await charge_service.set_extended_mode(StorageExtendedControlMode.CHARGE_FROM_GRID)
+
+    assert charge_facade.write_calls == [
+        (1, 40300 + STORAGE_CONTROL_MODE_OFFSET, 1),
+        (1, 40300 + CHARGE_RATE_OFFSET, 10000),
+        (1, 40300 + DISCHARGE_RATE_OFFSET, 0),
+    ]
+    assert charge_facade.storage_refreshes == 1
+
+    discharge_facade = _WriteFacade()
+    discharge_service = FroniusModbusWriteService(discharge_facade)
+
+    await discharge_service.set_extended_mode(StorageExtendedControlMode.DISCHARGE_TO_GRID)
+
+    assert discharge_facade.write_calls == [
+        (1, 40300 + STORAGE_CONTROL_MODE_OFFSET, 2),
+        (1, 40300 + CHARGE_RATE_OFFSET, 0),
+        (1, 40300 + DISCHARGE_RATE_OFFSET, 10000),
+    ]
+    assert discharge_facade.storage_refreshes == 1
 
 
 def test_change_settings_signature_does_not_advertise_unused_grid_power_arguments() -> None:

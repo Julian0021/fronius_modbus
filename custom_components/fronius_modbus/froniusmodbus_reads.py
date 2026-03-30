@@ -1153,6 +1153,11 @@ class FroniusModbusReadService:
             and charge_status == "discharging"
         ):
             charge_status = "charging"
+        if (
+            ext_control_mode == StorageExtendedControlMode.DISCHARGE_TO_GRID
+            and charge_status == "charging"
+        ):
+            charge_status = "discharging"
 
         self._facade.data["charge_status"] = charge_status
         self._facade.data["soc_minimum"] = soc_minimum_value
@@ -1187,6 +1192,11 @@ class FroniusModbusReadService:
             and mapped_control_mode == "discharge"
         ):
             mapped_control_mode = "charge"
+        if (
+            ext_control_mode == StorageExtendedControlMode.DISCHARGE_TO_GRID
+            and mapped_control_mode == "charge"
+        ):
+            mapped_control_mode = "discharge"
         if raw["discharge_power"] >= 0:
             self._facade.data["discharge_limit"] = raw["discharge_power"] / 100.0
             self._facade.data["grid_charge_power"] = 0

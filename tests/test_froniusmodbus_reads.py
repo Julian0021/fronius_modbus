@@ -105,7 +105,7 @@ async def test_read_inverter_storage_data_passes_charge_grid_flag_to_mode_deriva
                 "max_charge": 1,
                 "WChaGra": 100,
                 "WDisChaGra": 0,
-                "storage_control_mode": 2,
+                "storage_control_mode": 1,
                 "minimum_reserve": 500,
                 "charge_state": 7000,
                 "charge_status": 4,
@@ -118,7 +118,7 @@ async def test_read_inverter_storage_data_passes_charge_grid_flag_to_mode_deriva
 
     assert await service.read_inverter_storage_data() is True
     assert captured_kwargs == {
-        "storage_control_mode": 2,
+        "storage_control_mode": 1,
         "charge_power": 100,
         "discharge_power": 0,
         "charge_grid_enabled": True,
@@ -148,3 +148,53 @@ async def test_read_inverter_storage_data_normalizes_charge_status_for_charge_fr
     assert service._facade.data["ext_control_mode"] == "charge_from_grid"
     assert service._facade.data["control_mode"] == "charge"
     assert service._facade.data["charge_status"] == "charging"
+
+
+@pytest.mark.asyncio
+async def test_read_inverter_storage_data_recognizes_discharge_to_grid_defaults() -> None:
+    service = FroniusModbusReadService(
+        _StorageReadFacade(
+            {
+                "max_charge": 1,
+                "WChaGra": 0,
+                "WDisChaGra": 100,
+                "storage_control_mode": 2,
+                "minimum_reserve": 500,
+                "charge_state": 7000,
+                "charge_status": 3,
+                "discharge_power": 100,
+                "charge_power": 0,
+                "charge_grid_set": 0,
+            }
+        )
+    )
+
+    assert await service.read_inverter_storage_data() is True
+    assert service._facade.data["ext_control_mode"] == "discharge_to_grid"
+    assert service._facade.data["control_mode"] == "discharge"
+    assert service._facade.data["charge_status"] == "discharging"
+
+
+@pytest.mark.asyncio
+async def test_read_inverter_storage_data_normalizes_legacy_discharge_to_grid_signals() -> None:
+    service = FroniusModbusReadService(
+        _StorageReadFacade(
+            {
+                "max_charge": 1,
+                "WChaGra": 0,
+                "WDisChaGra": 100,
+                "storage_control_mode": 1,
+                "minimum_reserve": 500,
+                "charge_state": 7000,
+                "charge_status": 4,
+                "discharge_power": 100,
+                "charge_power": -25,
+                "charge_grid_set": 0,
+            }
+        )
+    )
+
+    assert await service.read_inverter_storage_data() is True
+    assert service._facade.data["ext_control_mode"] == "discharge_to_grid"
+    assert service._facade.data["control_mode"] == "discharge"
+    assert service._facade.data["charge_status"] == "discharging"

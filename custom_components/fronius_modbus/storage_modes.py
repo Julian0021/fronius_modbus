@@ -71,7 +71,7 @@ STORAGE_MODE_POLICIES: dict[StorageExtendedControlMode, StorageModePolicy] = {
     ),
     StorageExtendedControlMode.CHARGE_FROM_GRID: StorageModePolicy(
         label="charge_from_grid",
-        modbus_control_mode=2,
+        modbus_control_mode=1,
         default_charge_limit=100,
         default_discharge_limit=0,
         log_message="Charge from grid enabled",
@@ -79,7 +79,7 @@ STORAGE_MODE_POLICIES: dict[StorageExtendedControlMode, StorageModePolicy] = {
     ),
     StorageExtendedControlMode.DISCHARGE_TO_GRID: StorageModePolicy(
         label="discharge_to_grid",
-        modbus_control_mode=1,
+        modbus_control_mode=2,
         default_charge_limit=0,
         default_discharge_limit=100,
         log_message="Discharge to grid enabled",
@@ -153,18 +153,22 @@ def derive_storage_extended_mode(
     """Map raw storage-control registers to the exposed extended mode."""
     if storage_control_mode == 0:
         return StorageExtendedControlMode.AUTO
-    if storage_control_mode in (1, 3) and charge_power == 0:
-        return StorageExtendedControlMode.BLOCK_CHARGING
+    if storage_control_mode in (1, 2, 3) and discharge_power is not None and discharge_power < 0:
+        return StorageExtendedControlMode.CHARGE_FROM_GRID
+    if storage_control_mode in (1, 2, 3) and charge_power is not None and charge_power < 0:
+        return StorageExtendedControlMode.DISCHARGE_TO_GRID
+    if storage_control_mode == 1 and discharge_power == 0:
+        return StorageExtendedControlMode.CHARGE_FROM_GRID
+    if storage_control_mode == 2 and charge_power == 0:
+        return StorageExtendedControlMode.DISCHARGE_TO_GRID
     if storage_control_mode == 1:
         return StorageExtendedControlMode.PV_CHARGE_LIMIT
-    if storage_control_mode in (2, 3) and discharge_power is not None and discharge_power < 0:
-        return StorageExtendedControlMode.CHARGE_FROM_GRID
-    if storage_control_mode in (2, 3) and charge_power is not None and charge_power < 0:
-        return StorageExtendedControlMode.DISCHARGE_TO_GRID
     if storage_control_mode == 2 and discharge_power == 0 and charge_grid_enabled:
         return StorageExtendedControlMode.CHARGE_FROM_GRID
-    if storage_control_mode in (2, 3) and discharge_power == 0:
+    if storage_control_mode == 3 and discharge_power == 0:
         return StorageExtendedControlMode.BLOCK_DISCHARGING
+    if storage_control_mode == 3 and charge_power == 0:
+        return StorageExtendedControlMode.BLOCK_CHARGING
     if storage_control_mode == 2:
         return StorageExtendedControlMode.DISCHARGE_LIMIT
     if storage_control_mode == 3:

@@ -4,7 +4,12 @@ import logging
 from typing import Any
 
 from homeassistant import config_entries, exceptions
-from homeassistant.const import CONF_HOST, CONF_NAME, CONF_PORT, CONF_SCAN_INTERVAL
+from homeassistant.const import (
+    CONF_HOST,
+    CONF_NAME,
+    CONF_PORT,
+    CONF_SCAN_INTERVAL,
+)
 from homeassistant.core import HomeAssistant
 from requests import RequestException
 
@@ -17,6 +22,7 @@ from .const import (
     DEFAULT_AUTO_ENABLE_MODBUS,
     DEFAULT_INVERTER_UNIT_ID,
     DEFAULT_METER_UNIT_IDS,
+    DEFAULT_NAME,
     DEFAULT_PORT,
     DEFAULT_RESTRICT_MODBUS_TO_THIS_IP,
     SUPPORTED_MANUFACTURERS,
@@ -79,6 +85,7 @@ def expand_settings_input(
 ) -> dict[str, Any]:
     """Overlay user input onto runtime defaults and normalize the stored payload."""
     payload = runtime_defaults(base_settings)
+    payload[CONF_NAME] = str(user_input.get(CONF_NAME, payload[CONF_NAME])).strip() or DEFAULT_NAME
     payload[CONF_HOST] = str(user_input.get(CONF_HOST, payload[CONF_HOST])).strip()
     payload[CONF_SCAN_INTERVAL] = int(
         user_input.get(CONF_SCAN_INTERVAL, payload[CONF_SCAN_INTERVAL])

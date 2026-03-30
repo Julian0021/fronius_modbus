@@ -4,6 +4,7 @@ from typing import Any
 
 from homeassistant.const import (
     CONF_HOST,
+    CONF_NAME,
     CONF_RESTRICT_MODBUS_TO_THIS_IP,
     CONF_SCAN_INTERVAL,
 )
@@ -36,6 +37,7 @@ async def _unexpected_success(*_args: Any) -> None:
 
 def _settings(*, host: str) -> dict[str, Any]:
     settings = default_config_payload()
+    settings[CONF_NAME] = "Existing Name"
     settings[CONF_HOST] = host
     settings[CONF_SCAN_INTERVAL] = 10
     settings[CONF_RESTRICT_MODBUS_TO_THIS_IP] = False
@@ -60,6 +62,7 @@ async def test_handle_settings_step_shows_password_step_for_invalid_stored_token
 
     result = await flow._async_handle_settings_step(
         user_input={
+            CONF_NAME: "New Name",
             CONF_HOST: "new-host",
             CONF_SCAN_INTERVAL: 10,
             CONF_RESTRICT_MODBUS_TO_THIS_IP: False,
@@ -67,6 +70,7 @@ async def test_handle_settings_step_shows_password_step_for_invalid_stored_token
         step_id="init",
         password_step_id="password",
         form_defaults={
+            CONF_NAME: previous_settings[CONF_NAME],
             CONF_HOST: previous_settings[CONF_HOST],
             CONF_SCAN_INTERVAL: previous_settings[CONF_SCAN_INTERVAL],
             CONF_RESTRICT_MODBUS_TO_THIS_IP: previous_settings[
@@ -82,6 +86,7 @@ async def test_handle_settings_step_shows_password_step_for_invalid_stored_token
     assert result["type"] == "form"
     assert result["step_id"] == "password"
     assert flow._pending_flow_state is not None
+    assert flow._pending_flow_state.settings[CONF_NAME] == "New Name"
     assert flow._pending_flow_state.settings[CONF_HOST] == "new-host"
     assert flow._pending_flow_state.previous_host == "old-host"
     assert flow._pending_flow_state.apply_modbus_config is True
@@ -114,6 +119,7 @@ async def test_handle_settings_step_does_not_crash_if_prevalidation_raises_inval
         step_id="init",
         password_step_id="password",
         form_defaults={
+            CONF_NAME: "Existing Name",
             CONF_HOST: "old-host",
             CONF_SCAN_INTERVAL: 10,
             CONF_RESTRICT_MODBUS_TO_THIS_IP: False,
@@ -128,3 +134,11 @@ async def test_handle_settings_step_does_not_crash_if_prevalidation_raises_inval
     assert result["step_id"] == "init"
     assert result["errors"] == {"base": "invalid_api_credentials"}
     assert flow._pending_flow_state is None
+
+
+def test_build_settings_schema_includes_name_field() -> None:
+    schema = flow_steps_module._build_settings_schema(_settings(host="named-host"))
+
+    schema_keys = {marker.schema for marker in schema.schema}
+
+    assert CONF_NAME in schema_keys

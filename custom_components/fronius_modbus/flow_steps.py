@@ -9,7 +9,7 @@ import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.const import (
     CONF_HOST,
-    CONF_RESTRICT_MODBUS_TO_THIS_IP,
+    CONF_NAME,
     CONF_SCAN_INTERVAL,
 )
 from homeassistant.exceptions import HomeAssistantError
@@ -18,6 +18,8 @@ from homeassistant.helpers.selector import TextSelector, TextSelectorConfig, Tex
 from .config_data import merged_entry_config
 from .const import (
     CONF_API_PASSWORD,
+    CONF_RESTRICT_MODBUS_TO_THIS_IP,
+    DEFAULT_NAME,
     DEFAULT_RESTRICT_MODBUS_TO_THIS_IP,
     DEFAULT_SCAN_INTERVAL,
 )
@@ -72,6 +74,10 @@ def entry_defaults(entry: config_entries.ConfigEntry) -> dict[str, Any]:
 def _build_settings_schema(defaults: dict[str, Any]) -> vol.Schema:
     return vol.Schema(
         {
+            vol.Required(
+                CONF_NAME,
+                default=defaults.get(CONF_NAME, DEFAULT_NAME),
+            ): str,
             vol.Required(CONF_HOST, default=defaults.get(CONF_HOST, "")): str,
             vol.Required(
                 CONF_SCAN_INTERVAL,

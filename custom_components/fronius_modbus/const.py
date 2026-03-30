@@ -497,7 +497,7 @@ STORAGE_SENSOR_TYPES = {
     "discharging_power": SensorEntitySpec("discharging_power", "discharging_power", unit="%", icon="mdi:gauge", entity_category=EntityCategory.DIAGNOSTIC),
     "soc_minimum": SensorEntitySpec("soc_minimum", "soc_minimum", unit="%", icon="mdi:gauge"),
     "grid_charging": SensorEntitySpec("grid_charging", "grid_charging", entity_category=EntityCategory.DIAGNOSTIC),
-    "WHRtg": SensorEntitySpec("WHRtg", "WHRtg", SensorDeviceClass.ENERGY, SensorStateClass.MEASUREMENT, "Wh", entity_category=EntityCategory.DIAGNOSTIC),
+    "WHRtg": SensorEntitySpec("WHRtg", "WHRtg", SensorDeviceClass.ENERGY, None, "Wh", entity_category=EntityCategory.DIAGNOSTIC),
     "MaxChaRte": SensorEntitySpec("MaxChaRte", "MaxChaRte", SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, "W", entity_category=EntityCategory.DIAGNOSTIC),
     "MaxDisChaRte": SensorEntitySpec("MaxDisChaRte", "MaxDisChaRte", SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, "W", entity_category=EntityCategory.DIAGNOSTIC),
 }

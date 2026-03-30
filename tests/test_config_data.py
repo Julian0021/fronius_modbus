@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_HOST
+from homeassistant.const import CONF_HOST, CONF_NAME
 
 from custom_components.fronius_modbus.config_data import (
     entry_value,
@@ -65,19 +65,23 @@ def test_sanitize_config_payload_drops_unknown_keys_and_preserves_supported_ones
 def test_entry_value_prefers_options_and_form_defaults_only_exposes_user_owned_fields() -> None:
     entry = ConfigEntry(
         data={
+            CONF_NAME: "Data Name",
             CONF_HOST: "data-host",
             "scan_interval": 10,
             CONF_RESTRICT_MODBUS_TO_THIS_IP: False,
         },
         options={
+            CONF_NAME: "Options Name",
             CONF_HOST: "options-host",
             "scan_interval": 15,
             CONF_RESTRICT_MODBUS_TO_THIS_IP: True,
         },
     )
 
+    assert entry_value(entry, CONF_NAME) == "Options Name"
     assert entry_value(entry, CONF_HOST) == "options-host"
     assert form_setting_defaults(merged_entry_config(entry)) == {
+        CONF_NAME: "Options Name",
         CONF_HOST: "options-host",
         "scan_interval": 15,
         CONF_RESTRICT_MODBUS_TO_THIS_IP: True,
@@ -86,3 +90,7 @@ def test_entry_value_prefers_options_and_form_defaults_only_exposes_user_owned_f
 
 def test_storage_charge_status_descriptor_keeps_diagnostic_category() -> None:
     assert STORAGE_SENSOR_TYPES["charge_status"].entity_category == "diagnostic"
+
+
+def test_storage_capacity_descriptor_does_not_use_measurement_state_class() -> None:
+    assert STORAGE_SENSOR_TYPES["WHRtg"].state_class is None

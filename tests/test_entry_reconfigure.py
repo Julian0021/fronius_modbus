@@ -4,7 +4,7 @@ import types
 
 from custom_components.fronius_modbus.const import CONF_RECONFIGURE_REQUIRED
 import custom_components.fronius_modbus.entry_reconfigure as entry_reconfigure
-from tests.fakes import make_entry
+from test_support.fakes import make_entry
 
 
 async def test_async_prepare_entry_token_sets_reconfigure_required_without_token(

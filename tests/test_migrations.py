@@ -3,7 +3,7 @@ from __future__ import annotations
 import types
 
 from custom_components.fronius_modbus.migrations import async_migrate_entry
-from tests.fakes import make_entry
+from test_support.fakes import make_entry
 
 
 async def test_async_migrate_entry_allows_older_entries_without_rewriting() -> None:

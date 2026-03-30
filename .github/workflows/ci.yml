@@ -25,9 +25,9 @@ jobs:
       - name: Install dependencies
         run: python -m pip install -r requirements-dev.txt
       - name: Run Ruff
-        run: python -m ruff check custom_components tests tests_ha
+        run: python -m ruff check custom_components test_support tests tests_ha
       - name: Compile Python files
-        run: python -m compileall -q custom_components tests tests_ha
+        run: python -m compileall -q custom_components test_support tests tests_ha
 
   package:
     runs-on: ubuntu-latest

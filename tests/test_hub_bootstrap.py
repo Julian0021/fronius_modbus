@@ -10,7 +10,7 @@ from custom_components.fronius_modbus.hub_bootstrap import (
     check_pymodbus_version,
 )
 from custom_components.fronius_modbus.integration_errors import FroniusDependencyError
-from tests.fakes import FakeHass
+from test_support.fakes import FakeHass
 
 
 class _BootstrapClient:

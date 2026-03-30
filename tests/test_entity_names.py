@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import custom_components.fronius_modbus.entity_names as entity_names
-from tests.fakes import FakeHass
+from test_support.fakes import FakeHass
 
 
 def test_resolve_cached_entity_name_formats_placeholders(monkeypatch) -> None:

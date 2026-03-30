@@ -38,9 +38,11 @@ For the local CI checks, install the shared dev dependencies and run:
 
 ```bash
 python -m pip install -r requirements-dev.txt
-python -m ruff check custom_components tests tests_ha
+python -m ruff check custom_components test_support tests tests_ha
 pytest -q
 ```
+
+`pytest -q` runs only the lightweight unit/stub lane in `tests/`, because [pytest.ini](/home/julian/fronius_modbus/pytest.ini) keeps the default test path scoped there.
 
 For a second test path that uses the real Home Assistant package instead of the local stubs, install the Home Assistant test dependencies and run:
 
@@ -49,7 +51,9 @@ python -m pip install -r requirements-dev-ha.txt
 pytest -q tests_ha
 ```
 
-A ready-to-use devcontainer is included in [.devcontainer/devcontainer.json](/home/julian/fronius_modbus/.devcontainer/devcontainer.json).
+In CI, that Home Assistant lane is treated as a targeted integration/smoke run on Python 3.13 rather than a full version matrix.
+
+A ready-to-use devcontainer is included in [.devcontainer/devcontainer.json](/home/julian/fronius_modbus/.devcontainer/devcontainer.json). It is intentionally focused on the real Home Assistant lane and installs `requirements-dev-ha.txt`, not the lightweight unit-test stack.
 
 ## Inverter Setup
 

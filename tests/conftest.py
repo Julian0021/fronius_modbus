@@ -8,25 +8,10 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 STUB_ROOT = REPO_ROOT / "tests" / "stubs"
-CUSTOM_COMPONENTS_ROOT = REPO_ROOT / "custom_components"
 
 for path in (str(STUB_ROOT), str(REPO_ROOT)):
     if path not in sys.path:
         sys.path.insert(0, path)
-
-
-def _configure_custom_component_namespace() -> None:
-    import custom_components
-
-    repo_path = str(CUSTOM_COMPONENTS_ROOT)
-    package_paths = getattr(custom_components, "__path__", None)
-    if package_paths is None:
-        raise RuntimeError("custom_components package does not define __path__")
-    if repo_path not in package_paths:
-        package_paths.append(repo_path)
-
-
-_configure_custom_component_namespace()
 
 
 def _clear_translation_cache() -> None:

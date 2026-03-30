@@ -7,7 +7,7 @@ from custom_components.fronius_modbus.froniuswebclient import FroniusWebAuthErro
 import custom_components.fronius_modbus.hub_web_api as hub_web_api_module
 from custom_components.fronius_modbus.hub_web_api import HubWebApiService
 from custom_components.fronius_modbus.runtime_state import FroniusRuntimeState
-from tests.fakes import FakeHass
+from test_support.fakes import FakeHass
 
 
 def _enabled_bool(value) -> bool:

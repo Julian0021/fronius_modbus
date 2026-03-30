@@ -6,7 +6,7 @@ import re
 
 import custom_components.fronius_modbus.const as const
 import custom_components.fronius_modbus.translation as translation
-from tests.fakes import FakeHass
+from test_support.fakes import FakeHass
 
 _VALID_TRANSLATION_KEY_RE = re.compile(r"[a-z0-9](?:[a-z0-9-_]*[a-z0-9])?")
 

@@ -211,7 +211,7 @@ async def test_async_setup_and_unload_entry_with_real_homeassistant(
 
 
 @pytest.mark.asyncio
-async def test_async_setup_entry_closes_runtime_data_when_bootstrap_fails_on_real_ha(
+async def test_async_setup_entry_closes_runtime_data_when_bootstrap_fails_with_patched_runtime_on_real_ha(
     hass,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -235,7 +235,7 @@ async def test_async_setup_entry_closes_runtime_data_when_bootstrap_fails_on_rea
 
 
 @pytest.mark.asyncio
-async def test_async_setup_entry_closes_and_detaches_runtime_data_when_forwarding_fails_on_real_ha(
+async def test_async_setup_entry_closes_and_detaches_runtime_data_when_forwarding_fails_with_patched_runtime_on_real_ha(
     hass,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -270,7 +270,7 @@ async def test_async_setup_entry_closes_and_detaches_runtime_data_when_forwardin
 
 
 @pytest.mark.asyncio
-async def test_async_setup_entry_preserves_topology_entities_when_runtime_model_is_uncertain_on_real_ha(
+async def test_async_setup_entry_preserves_topology_entities_when_patched_runtime_model_is_uncertain_on_real_ha(
     hass,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

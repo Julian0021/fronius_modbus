@@ -16,7 +16,7 @@ from custom_components.fronius_modbus.integration_errors import (
     FroniusAuthError,
     FroniusConnectionError,
 )
-from tests.fakes import FakeHass
+from test_support.fakes import FakeHass
 
 
 async def test_async_mint_token_maps_auth_failures_to_invalid_credentials(monkeypatch) -> None:

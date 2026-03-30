@@ -13,7 +13,7 @@ from custom_components.fronius_modbus import (
     switch as switch_platform,
 )
 import custom_components.fronius_modbus.platform_setup as platform_setup_module
-from tests.platform_setup_support import _AsyncCallService, _entity_by_key
+from test_support.platform_setup import _AsyncCallService, _entity_by_key
 
 
 class _FakeHub:

@@ -27,7 +27,7 @@ jobs:
       - name: Run Ruff
         run: python -m ruff check custom_components tests
       - name: Compile Python files
-        run: python -m py_compile custom_components/fronius_modbus/*.py tests/*.py
+        run: python -m compileall -q custom_components tests
 
   test:
     runs-on: ubuntu-latest

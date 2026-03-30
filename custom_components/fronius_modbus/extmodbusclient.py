@@ -94,10 +94,6 @@ class ExtModbusClient:
             raise ModbusReadError(
                 f"Failed reading registers address={address} count={count} unit_id={unit_id}"
             ) from err
-        except Exception as err:
-            raise ModbusReadError(
-                f"Unexpected read failure address={address} count={count} unit_id={unit_id}"
-            ) from err
 
     async def get_registers(self, unit_id, address, count, retries=1):
         """Read registers with limited retries for transport and response failures."""
@@ -166,10 +162,6 @@ class ExtModbusClient:
         except (ModbusIOException, ConnectionException) as err:
             raise ModbusWriteError(
                 f"Failed writing registers address={address} unit_id={unit_id}"
-            ) from err
-        except Exception as err:
-            raise ModbusWriteError(
-                f"Unexpected write failure address={address} unit_id={unit_id}"
             ) from err
 
         if result.isError():

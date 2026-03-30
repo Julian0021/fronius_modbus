@@ -16,7 +16,6 @@ from .const import (
     INVERTER_WEB_SENSOR_TYPES,
     METER_SENSOR_TYPES,
     MPPT_MODULE_SENSOR_TYPES,
-    SENSOR_STATE_OPTIONS,
     SINGLE_PHASE_UNSUPPORTED_METER_SENSOR_KEYS,
     STORAGE_SENSOR_TYPES,
 )
@@ -29,11 +28,6 @@ def _meter_prefix(unit_id: int) -> str:
     return f"meter_{int(unit_id)}_"
 
 
-def _device_class_for_spec(spec) -> SensorDeviceClass | None:
-    options = SENSOR_STATE_OPTIONS.get(spec.translation_key)
-    return SensorDeviceClass.ENUM if options is not None else spec.device_class
-
-
 def _build_sensor(
     *,
     coordinator,
@@ -42,6 +36,7 @@ def _build_sensor(
     key: str | None = None,
     translation_placeholders: dict[str, str] | None = None,
 ) -> FroniusModbusSensor:
+    options = getattr(description, "options", None)
     return FroniusModbusSensor(
         **entity_description_kwargs(
             coordinator=coordinator,
@@ -49,10 +44,14 @@ def _build_sensor(
             description=description,
             key=description.key if key is None else key,
             translation_placeholders=translation_placeholders,
-            device_class=_device_class_for_spec(description),
+            device_class=(
+                SensorDeviceClass.ENUM
+                if options is not None
+                else description.device_class
+            ),
             state_class=description.state_class,
             unit=description.unit,
-            options=SENSOR_STATE_OPTIONS.get(description.translation_key),
+            options=options,
         )
     )
 

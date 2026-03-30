@@ -159,6 +159,7 @@ class SensorEntitySpec:
     unit: str | None = None
     icon: str | None = None
     entity_category: EntityCategory | None = None
+    options: list[str] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -426,6 +427,10 @@ ENTITY_DESCRIPTOR_COLLECTIONS: tuple[tuple[Any, ...], ...] = (
     INVERTER_API_BUTTON_TYPES,
 )
 
+
+def _state_values(*mappings: dict[Any, str]) -> list[str]:
+    return list(dict.fromkeys(value for mapping in mappings for value in mapping.values()))
+
 INVERTER_SENSOR_TYPES = {
     "A": SensorEntitySpec("a", "A", SensorDeviceClass.CURRENT, SensorStateClass.MEASUREMENT, "A", "mdi:current-ac"),
     "AphA": SensorEntitySpec("apha", "AphA", SensorDeviceClass.CURRENT, SensorStateClass.MEASUREMENT, "A", "mdi:current-ac"),
@@ -434,34 +439,43 @@ INVERTER_SENSOR_TYPES = {
     "acenergy": SensorEntitySpec("acenergy", "acenergy", SensorDeviceClass.ENERGY, SensorStateClass.TOTAL_INCREASING, "Wh", "mdi:lightning-bolt"),
     "pv_power": SensorEntitySpec("pv_power", "pv_power", SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, "W", "mdi:solar-power"),
     "load": SensorEntitySpec("load", "load", SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, "W", "mdi:lightning-bolt"),
-    "pv_connection": SensorEntitySpec("pv_connection", "pv_connection", entity_category=EntityCategory.DIAGNOSTIC),
-    "ecp_connection": SensorEntitySpec("ecp_connection", "ecp_connection", entity_category=EntityCategory.DIAGNOSTIC),
-    "status": SensorEntitySpec("status", "status", entity_category=EntityCategory.DIAGNOSTIC),
-    "statusvendor": SensorEntitySpec("statusvendor", "statusvendor", entity_category=EntityCategory.DIAGNOSTIC),
+    "pv_connection": SensorEntitySpec("pv_connection", "pv_connection", entity_category=EntityCategory.DIAGNOSTIC, options=_state_values(CONNECTION_STATUS_CONDENSED)),
+    "ecp_connection": SensorEntitySpec("ecp_connection", "ecp_connection", entity_category=EntityCategory.DIAGNOSTIC, options=_state_values(ECP_CONNECTION_STATUS)),
+    "status": SensorEntitySpec("status", "status", entity_category=EntityCategory.DIAGNOSTIC, options=_state_values(INVERTER_STATUS)),
+    "statusvendor": SensorEntitySpec("statusvendor", "statusvendor", entity_category=EntityCategory.DIAGNOSTIC, options=_state_values(FRONIUS_INVERTER_STATUS)),
     "line_frequency": SensorEntitySpec("line_frequency", "line_frequency", SensorDeviceClass.FREQUENCY, SensorStateClass.MEASUREMENT, "Hz"),
-    "inverter_controls": SensorEntitySpec("inverter_controls", "inverter_controls", entity_category=EntityCategory.DIAGNOSTIC),
+    "inverter_controls": SensorEntitySpec("inverter_controls", "inverter_controls", entity_category=EntityCategory.DIAGNOSTIC, options=[
+        "Normal",
+        "Power reduction",
+        "Constant reactive power",
+        "Constant power factor",
+        "Power reduction,Constant reactive power",
+        "Power reduction,Constant power factor",
+        "Constant reactive power,Constant power factor",
+        "Power reduction,Constant reactive power,Constant power factor",
+    ]),
     "vref": SensorEntitySpec("vref", "vref", SensorDeviceClass.VOLTAGE, SensorStateClass.MEASUREMENT, "V", "mdi:lightning-bolt", EntityCategory.DIAGNOSTIC),
     "vrefofs": SensorEntitySpec("vrefofs", "vrefofs", SensorDeviceClass.VOLTAGE, SensorStateClass.MEASUREMENT, "V", "mdi:lightning-bolt", EntityCategory.DIAGNOSTIC),
     "max_power": SensorEntitySpec("max_power", "max_power", SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, "W", "mdi:lightning-bolt"),
     "events2": SensorEntitySpec("events2", "events2", entity_category=EntityCategory.DIAGNOSTIC),
-    "grid_status": SensorEntitySpec("grid_status", "grid_status", entity_category=EntityCategory.DIAGNOSTIC),
-    "Conn": SensorEntitySpec("conn", "Conn", entity_category=EntityCategory.DIAGNOSTIC),
-    "WMaxLim_Ena": SensorEntitySpec("wmaxlim_ena", "WMaxLim_Ena", entity_category=EntityCategory.DIAGNOSTIC),
-    "OutPFSet_Ena": SensorEntitySpec("outpfset_ena", "OutPFSet_Ena", entity_category=EntityCategory.DIAGNOSTIC),
-    "VArPct_Ena": SensorEntitySpec("varpct_ena", "VArPct_Ena", entity_category=EntityCategory.DIAGNOSTIC),
+    "grid_status": SensorEntitySpec("grid_status", "grid_status", entity_category=EntityCategory.DIAGNOSTIC, options=_state_values(GRID_STATUS)),
+    "Conn": SensorEntitySpec("conn", "Conn", entity_category=EntityCategory.DIAGNOSTIC, options=_state_values(CONTROL_STATUS)),
+    "WMaxLim_Ena": SensorEntitySpec("wmaxlim_ena", "WMaxLim_Ena", entity_category=EntityCategory.DIAGNOSTIC, options=_state_values(CONTROL_STATUS)),
+    "OutPFSet_Ena": SensorEntitySpec("outpfset_ena", "OutPFSet_Ena", entity_category=EntityCategory.DIAGNOSTIC, options=_state_values(CONTROL_STATUS)),
+    "VArPct_Ena": SensorEntitySpec("varpct_ena", "VArPct_Ena", entity_category=EntityCategory.DIAGNOSTIC, options=_state_values(CONTROL_STATUS)),
     "PhVphA": SensorEntitySpec("phvpha", "PhVphA", SensorDeviceClass.VOLTAGE, SensorStateClass.MEASUREMENT, "V", "mdi:lightning-bolt"),
     "unit_id": SensorEntitySpec("unit_id", "i_unit_id", entity_category=EntityCategory.DIAGNOSTIC),
     "ac_limit_rate": SensorEntitySpec("ac_limit_rate", "ac_limit_rate", SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, "W", "mdi:chart-line"),
-    "ac_limit_enable": SensorEntitySpec("ac_limit_enable", "ac_limit_enable", icon="mdi:power-plug", entity_category=EntityCategory.DIAGNOSTIC),
+    "ac_limit_enable": SensorEntitySpec("ac_limit_enable", "ac_limit_enable", icon="mdi:power-plug", entity_category=EntityCategory.DIAGNOSTIC, options=_state_values(AC_LIMIT_STATUS, {2: "unknown"})),
     "isolation_resistance": SensorEntitySpec("isolation_resistance", "isolation_resistance", None, SensorStateClass.MEASUREMENT, "MΩ", "mdi:omega"),
 }
 
 INVERTER_WEB_SENSOR_TYPES = {
     "inverter_temperature": SensorEntitySpec("inverter_temperature", "inverter_temperature", SensorDeviceClass.TEMPERATURE, SensorStateClass.MEASUREMENT, "°C", "mdi:thermometer"),
     "api_modbus_mode": SensorEntitySpec("api_modbus_mode", "api_modbus_mode", entity_category=EntityCategory.DIAGNOSTIC),
-    "api_modbus_control": SensorEntitySpec("api_modbus_control", "api_modbus_control", entity_category=EntityCategory.DIAGNOSTIC),
+    "api_modbus_control": SensorEntitySpec("api_modbus_control", "api_modbus_control", entity_category=EntityCategory.DIAGNOSTIC, options=_state_values(CONTROL_STATUS)),
     "api_modbus_sunspec_mode": SensorEntitySpec("api_modbus_sunspec_mode", "api_modbus_sunspec_mode", entity_category=EntityCategory.DIAGNOSTIC),
-    "api_modbus_restriction": SensorEntitySpec("api_modbus_restriction", "api_modbus_restriction", entity_category=EntityCategory.DIAGNOSTIC),
+    "api_modbus_restriction": SensorEntitySpec("api_modbus_restriction", "api_modbus_restriction", entity_category=EntityCategory.DIAGNOSTIC, options=_state_values(CONTROL_STATUS)),
     "api_modbus_restriction_ip": SensorEntitySpec("api_modbus_restriction_ip", "api_modbus_restriction_ip", entity_category=EntityCategory.DIAGNOSTIC),
 }
 
@@ -491,7 +505,7 @@ INVERTER_STORAGE_SENSOR_TYPES = {
     "storage_discharge_voltage": SensorEntitySpec("storage_discharge_voltage", "storage_discharge_voltage", SensorDeviceClass.VOLTAGE, SensorStateClass.MEASUREMENT, "V", "mdi:lightning-bolt"),
     "storage_discharge_power": SensorEntitySpec("storage_discharge_power", "storage_discharge_power", SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, "W", "mdi:home-battery"),
     "storage_discharge_lfte": SensorEntitySpec("storage_discharge_lfte", "storage_discharge_lfte", SensorDeviceClass.ENERGY, SensorStateClass.TOTAL_INCREASING, "Wh", "mdi:home-battery"),
-    "storage_connection": SensorEntitySpec("storage_connection", "storage_connection", entity_category=EntityCategory.DIAGNOSTIC),
+    "storage_connection": SensorEntitySpec("storage_connection", "storage_connection", entity_category=EntityCategory.DIAGNOSTIC, options=_state_values(CONNECTION_STATUS_CONDENSED)),
 }
 
 METER_SENSOR_TYPES = {
@@ -525,51 +539,15 @@ SINGLE_PHASE_UNSUPPORTED_METER_SENSOR_KEYS = (
 
 STORAGE_SENSOR_TYPES = {
     "storage_temperature": SensorEntitySpec("storage_temperature", "storage_temperature", SensorDeviceClass.TEMPERATURE, SensorStateClass.MEASUREMENT, "°C", "mdi:thermometer"),
-    "control_mode": SensorEntitySpec("control_mode", "control_mode", entity_category=EntityCategory.DIAGNOSTIC),
-    "charge_status": SensorEntitySpec("charge_status", "charge_status", entity_category=EntityCategory.DIAGNOSTIC),
+    "control_mode": SensorEntitySpec("control_mode", "control_mode", entity_category=EntityCategory.DIAGNOSTIC, options=_state_values(STORAGE_CONTROL_MODE)),
+    "charge_status": SensorEntitySpec("charge_status", "charge_status", entity_category=EntityCategory.DIAGNOSTIC, options=_state_values(CHARGE_STATUS)),
     "max_charge": SensorEntitySpec("max_charge", "max_charge", SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, "W", entity_category=EntityCategory.DIAGNOSTIC),
     "soc": SensorEntitySpec("soc", "soc", SensorDeviceClass.BATTERY, SensorStateClass.MEASUREMENT, "%"),
     "charging_power": SensorEntitySpec("charging_power", "charging_power", unit="%", icon="mdi:gauge", entity_category=EntityCategory.DIAGNOSTIC),
     "discharging_power": SensorEntitySpec("discharging_power", "discharging_power", unit="%", icon="mdi:gauge", entity_category=EntityCategory.DIAGNOSTIC),
     "soc_minimum": SensorEntitySpec("soc_minimum", "soc_minimum", unit="%", icon="mdi:gauge"),
-    "grid_charging": SensorEntitySpec("grid_charging", "grid_charging", entity_category=EntityCategory.DIAGNOSTIC),
+    "grid_charging": SensorEntitySpec("grid_charging", "grid_charging", entity_category=EntityCategory.DIAGNOSTIC, options=_state_values(CHARGE_GRID_STATUS)),
     "WHRtg": SensorEntitySpec("whrtg", "WHRtg", SensorDeviceClass.ENERGY, None, "Wh", entity_category=EntityCategory.DIAGNOSTIC),
     "MaxChaRte": SensorEntitySpec("maxcharte", "MaxChaRte", SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, "W", entity_category=EntityCategory.DIAGNOSTIC),
     "MaxDisChaRte": SensorEntitySpec("maxdischarte", "MaxDisChaRte", SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, "W", entity_category=EntityCategory.DIAGNOSTIC),
-}
-
-
-def _state_values(*mappings: dict[Any, str]) -> list[str]:
-    return list(dict.fromkeys(value for mapping in mappings for value in mapping.values()))
-
-
-INVERTER_CONTROL_STATE_VALUES = [
-    "Normal",
-    "Power reduction",
-    "Constant reactive power",
-    "Constant power factor",
-    "Power reduction,Constant reactive power",
-    "Power reduction,Constant power factor",
-    "Constant reactive power,Constant power factor",
-    "Power reduction,Constant reactive power,Constant power factor",
-]
-
-SENSOR_STATE_OPTIONS = {
-    "pv_connection": _state_values(CONNECTION_STATUS_CONDENSED),
-    "storage_connection": _state_values(CONNECTION_STATUS_CONDENSED),
-    "ecp_connection": _state_values(ECP_CONNECTION_STATUS),
-    "status": _state_values(INVERTER_STATUS),
-    "statusvendor": _state_values(FRONIUS_INVERTER_STATUS),
-    "grid_status": _state_values(GRID_STATUS),
-    "conn": _state_values(CONTROL_STATUS),
-    "wmaxlim_ena": _state_values(CONTROL_STATUS),
-    "outpfset_ena": _state_values(CONTROL_STATUS),
-    "varpct_ena": _state_values(CONTROL_STATUS),
-    "ac_limit_enable": _state_values(AC_LIMIT_STATUS, {2: "unknown"}),
-    "control_mode": _state_values(STORAGE_CONTROL_MODE),
-    "charge_status": _state_values(CHARGE_STATUS),
-    "grid_charging": _state_values(CHARGE_GRID_STATUS),
-    "api_modbus_control": _state_values(CONTROL_STATUS),
-    "api_modbus_restriction": _state_values(CONTROL_STATUS),
-    "inverter_controls": INVERTER_CONTROL_STATE_VALUES,
 }

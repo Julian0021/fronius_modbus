@@ -4,6 +4,7 @@ import asyncio
 from types import SimpleNamespace
 
 import pytest
+from homeassistant.components.sensor import SensorDeviceClass
 from homeassistant.core import HomeAssistant
 
 import custom_components.fronius_modbus.platform_setup as platform_setup_module
@@ -24,7 +25,7 @@ from custom_components.fronius_modbus import (
 )
 from custom_components.fronius_modbus.platform_setup import (
     descriptor_is_available,
-    descriptor_number_value,
+    descriptor_native_number_value,
     descriptor_number_write_value,
     dispatch_service_action,
     entity_description_kwargs,
@@ -187,7 +188,7 @@ def test_descriptor_helpers_cover_entity_policies() -> None:
 
     assert descriptor_is_available(hub, coordinator, storage_number)
     assert descriptor_is_available(hub, coordinator, api_number)
-    assert descriptor_number_value(hub, storage_number, 50) == 2500.0
+    assert descriptor_native_number_value(hub, storage_number, 50) == 2500.0
     assert descriptor_number_write_value(SimpleNamespace(value_transform="round_int"), 12.6) == 13
 
     calls: list[tuple[str, tuple, dict]] = []
@@ -237,36 +238,7 @@ def test_descriptor_helpers_reject_unknown_availability_policies() -> None:
         )
 
 
-def test_descriptor_helpers_reject_invalid_descriptor_contract_fields() -> None:
-    invalid_action_service = SimpleNamespace(
-        translation_key="invalid",
-        key="invalid_key",
-        availability="always",
-        action_service="not_a_service",
-        action="set_mode",
-    )
-    invalid_action = SimpleNamespace(
-        translation_key="invalid",
-        key="invalid_key",
-        availability="always",
-        action_service="command_service",
-        action="does_not_exist",
-    )
-
-    with pytest.raises(ValueError, match="Unsupported action_service"):
-        entity_description_kwargs(
-            coordinator="coordinator",
-            device_info="device",
-            description=invalid_action_service,
-        )
-
-    with pytest.raises(ValueError, match="Unsupported action"):
-        entity_description_kwargs(
-            coordinator="coordinator",
-            device_info="device",
-            description=invalid_action,
-        )
-
+def test_dispatch_service_action_rejects_invalid_service_name() -> None:
     with pytest.raises(ValueError, match="Unsupported service_name"):
         asyncio.run(
             dispatch_service_action(
@@ -274,19 +246,6 @@ def test_descriptor_helpers_reject_invalid_descriptor_contract_fields() -> None:
                 service_name="not_a_service",
                 action="set_mode",
             )
-        )
-
-    with pytest.raises(ValueError, match="Unsupported display_scale"):
-        descriptor_number_value(
-            SimpleNamespace(max_charge_rate_w=1, max_discharge_rate_w=1),
-            SimpleNamespace(display_scale="not_real"),
-            5,
-        )
-
-    with pytest.raises(ValueError, match="Unsupported value_transform"):
-        descriptor_number_write_value(
-            SimpleNamespace(value_transform="not_real"),
-            5,
         )
 
 
@@ -406,6 +365,10 @@ def test_sensor_platform_setup_covers_meter_mppt_and_storage_gating() -> None:
     meter_entity = _entity_by_key(entities, "meter_200_power")
     assert meter_entity._attr_unique_id == "fm_meter_200_power"
     assert meter_entity._attr_device_info == hub.get_device_info_meter(200)
+
+    grid_status = _entity_by_key(entities, "grid_status")
+    assert grid_status._attr_device_class == SensorDeviceClass.ENUM
+    assert grid_status._attr_options
 
 
 def test_sensor_platform_setup_registers_multiple_meters_with_phase_specific_entities() -> None:

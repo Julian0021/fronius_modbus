@@ -188,23 +188,6 @@ async def dispatch_service_action(
     return await handler(*args, **kwargs)
 
 
-async def dispatch_hub_action(
-    hub,
-    action: str | None,
-    *args,
-    service_name: str | None = None,
-    **kwargs,
-):
-    """Backward-compatible wrapper around service-based descriptor dispatch."""
-    return await dispatch_service_action(
-        hub,
-        service_name,
-        action,
-        *args,
-        **kwargs,
-    )
-
-
 def descriptor_is_available(hub, coordinator, description) -> bool:
     """Evaluate the descriptor-specific availability policy."""
     availability = _resolve_descriptor_availability(description)
@@ -245,10 +228,6 @@ def descriptor_native_number_value(hub, description, value: Any):
     if display_scale == "charge_rate":
         return round(float(value) / 100.0 * hub.max_charge_rate_w, 0)
     return value
-
-
-# Backward-compatible alias kept for tests and any older call sites.
-descriptor_number_value = descriptor_native_number_value
 
 
 def descriptor_number_write_value(description, value: Any):

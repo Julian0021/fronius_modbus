@@ -223,6 +223,8 @@ class HubCommandService:
             raise_on_auth_failure=True,
         )
         self._hub._web_api_service.start_battery_write_transition("Battery API mode")
+        await self._hub._web_api_service.refresh_web_data()
+        self._hub._publish_data_update()
 
     @toggle_busy
     async def set_api_battery_power(self, value: float):

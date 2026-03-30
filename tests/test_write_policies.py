@@ -139,6 +139,52 @@ async def test_hub_command_service_does_not_optimistically_mutate_api_battery_po
     ]
 
 
+async def test_hub_command_service_api_battery_mode_refreshes_and_publishes() -> None:
+    calls: list[tuple | str] = []
+
+    async def _fake_web_job(func, *args, **kwargs):
+        calls.append(("web_job", func, args, kwargs))
+
+    async def _fake_refresh():
+        calls.append("refresh")
+
+    def _fake_transition(source: str) -> None:
+        calls.append(("transition", source))
+
+    hub = SimpleNamespace(
+        _command_lock=asyncio.Lock(),
+        _webclient=SimpleNamespace(set_battery_config="set_battery_config"),
+        data={
+            "api_battery_mode": "Auto",
+            "api_battery_mode_effective_raw": 0,
+            "soc_minimum": 23,
+        },
+        _as_int=lambda value: int(value) if isinstance(value, int) else None,
+        _web_api_service=SimpleNamespace(
+            async_web_job=_fake_web_job,
+            refresh_web_data=_fake_refresh,
+            start_battery_write_transition=_fake_transition,
+        ),
+        _publish_data_update=lambda: calls.append("publish"),
+    )
+    service = HubCommandService(hub)
+
+    await service.set_api_battery_mode(1)
+
+    assert hub.data["api_battery_mode"] == "Auto"
+    assert calls == [
+        (
+            "web_job",
+            "set_battery_config",
+            (1, 0, 23),
+            {"raise_on_auth_failure": True},
+        ),
+        ("transition", "Battery API mode"),
+        "refresh",
+        "publish",
+    ]
+
+
 async def test_hub_command_service_set_mode_only_uses_modbus_dispatch() -> None:
     calls: list[tuple | str] = []
 

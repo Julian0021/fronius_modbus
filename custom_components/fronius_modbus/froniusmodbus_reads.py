@@ -1182,6 +1182,11 @@ class FroniusModbusReadService:
             raw["storage_control_mode"],
             "storage control mode",
         )
+        if (
+            ext_control_mode == StorageExtendedControlMode.CHARGE_FROM_GRID
+            and mapped_control_mode == "Discharge"
+        ):
+            mapped_control_mode = "Charge"
         if raw["discharge_power"] >= 0:
             self._facade.data["discharge_limit"] = raw["discharge_power"] / 100.0
             self._facade.data["grid_charge_power"] = 0

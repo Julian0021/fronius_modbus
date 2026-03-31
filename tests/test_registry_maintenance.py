@@ -60,7 +60,11 @@ class _RegistryHub:
 
 class _FakeEntityRegistry:
     def __init__(self, *entries) -> None:
+        for entry in entries:
+            if not hasattr(entry, "platform"):
+                entry.platform = "sensor"
         self._entries = {entry.entity_id: entry for entry in entries}
+        self.entities = self._entries
         self._entity_ids_by_unique_id = {
             entry.unique_id: entry.entity_id
             for entry in entries
@@ -249,6 +253,43 @@ async def test_async_migrate_legacy_entity_unique_ids_renames_name_based_prefixe
             "new_unique_id": "fm_entry-1_meter_200_power",
         },
     ]
+
+
+async def test_async_migrate_legacy_entity_unique_ids_skips_when_target_exists_globally(
+    monkeypatch,
+) -> None:
+    hub = _RegistryHub()
+    legacy_entry = SimpleNamespace(
+        entity_id="sensor.legacy_connection",
+        unique_id="fm_fronius_Conn",
+        device_id="device-legacy",
+        platform="sensor",
+    )
+    existing_entry = SimpleNamespace(
+        entity_id="sensor.current_connection",
+        unique_id="fm_entry-1_Conn",
+        device_id="device-other",
+        platform="sensor",
+    )
+    registry = _FakeEntityRegistry(legacy_entry, existing_entry)
+
+    monkeypatch.setattr(
+        "custom_components.fronius_modbus.registry_maintenance.er.async_get",
+        lambda _hass: registry,
+    )
+    monkeypatch.setattr(
+        "custom_components.fronius_modbus.registry_maintenance.er.async_entries_for_config_entry",
+        lambda _registry, _entry_id: [legacy_entry],
+    )
+
+    await async_migrate_legacy_entity_unique_ids(
+        hass=object(),
+        entry=SimpleNamespace(entry_id="entry-1"),
+        runtime_data=hub,
+    )
+
+    assert registry.update_calls == []
+    assert legacy_entry.unique_id == "fm_fronius_Conn"
 
 
 async def test_async_migrate_legacy_devices_prefers_referenced_device_and_removes_orphan(

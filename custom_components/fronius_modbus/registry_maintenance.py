@@ -47,6 +47,14 @@ def _entity_entries_for_config_entry(registry, entry: ConfigEntry):
     return list(er.async_entries_for_config_entry(registry, entry.entry_id))
 
 
+def _entity_unique_id_exists(registry, unique_id: str) -> bool:
+    """Return whether any registry entry already uses the unique id."""
+    return any(
+        (entity_entry.unique_id or "") == unique_id
+        for entity_entry in getattr(registry, "entities", {}).values()
+    )
+
+
 def _device_entries_for_config_entry(registry, entry: ConfigEntry):
     """Return all device registry entries attached to a config entry."""
     return list(dr.async_entries_for_config_entry(registry, entry.entry_id))
@@ -134,7 +142,7 @@ async def async_migrate_legacy_entity_unique_ids(
 
     for key in _platform_keys(runtime_data):
         new_unique_id = _entity_unique_id(runtime_data, key)
-        if any((candidate.unique_id or "") == new_unique_id for candidate in entity_entries):
+        if _entity_unique_id_exists(registry, new_unique_id):
             continue
 
         for candidate in entity_entries:

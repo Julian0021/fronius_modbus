@@ -82,6 +82,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: HubConfigEntry) -> bool:
 
     try:
         await runtime_data.bootstrap_service.init_data(config_entry=entry)
+        await registry_maintenance.async_migrate_legacy_entity_unique_ids(
+            hass,
+            entry,
+            runtime_data,
+        )
         await registry_maintenance.async_migrate_v019_mppt_statistics(
             hass,
             entry,
@@ -92,6 +97,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: HubConfigEntry) -> bool:
             entry,
             runtime_data,
             preserve_topology_sensitive_entities=not runtime_data.entity_registry_cleanup_safe,
+        )
+        await registry_maintenance.async_migrate_legacy_devices(
+            hass,
+            entry,
+            runtime_data,
         )
         await registry_maintenance.async_remove_legacy_devices(hass, entry)
         await entry_reconfigure.async_sync_reconfigure_issue(

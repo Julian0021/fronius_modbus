@@ -88,7 +88,6 @@ class Hub:
         self._host = host
         self._port = port
         self._inverter_unit_id = inverter_unit_id
-        self._entity_prefix = f"{ENTITY_PREFIX}_{name.lower()}_"
         self._config_entry: ConfigEntry | None = None
         self._auto_enable_modbus = auto_enable_modbus
         self._restrict_modbus_to_this_ip = restrict_modbus_to_this_ip
@@ -243,7 +242,7 @@ class Hub:
     @property
     def device_info_storage(self) -> dict:
         return {
-            "identifiers": {(DOMAIN, f"{self._name}_battery_storage")},
+            "identifiers": {(DOMAIN, self.storage_device_identifier)},
             "name": f"{self.storage_state.get('s_model')}",
             "manufacturer": self.storage_state.get("s_manufacturer"),
             "model": self.storage_state.get("s_model"),
@@ -253,7 +252,7 @@ class Hub:
     @property
     def device_info_inverter(self) -> dict:
         return {
-            "identifiers": {(DOMAIN, f"{self._name}_inverter")},
+            "identifiers": {(DOMAIN, self.inverter_device_identifier)},
             "name": f"Fronius {self.inverter_state.get('i_model')}",
             "manufacturer": self.inverter_state.get("i_manufacturer"),
             "model": self.inverter_state.get("i_model"),
@@ -267,7 +266,7 @@ class Hub:
         except ValueError:
             meter_position = 1
         return {
-            "identifiers": {(DOMAIN, f"{self._name}_meter_{unit_id}")},
+            "identifiers": {(DOMAIN, self.meter_device_identifier(unit_id))},
             "name": (
                 f"Fronius {self.meter_value(unit_id, 'model')} "
                 f"Meter {meter_position}"
@@ -286,7 +285,30 @@ class Hub:
     @property
     def entity_prefix(self) -> str:
         """Entity prefix for hub."""
-        return self._entity_prefix
+        return f"{ENTITY_PREFIX}_{self.identity_namespace}"
+
+    @property
+    def identity_namespace(self) -> str:
+        """Stable namespace used for registry identities and unique ids."""
+        if self._config_entry is not None:
+            return self._config_entry.entry_id
+        return self._name.lower()
+
+    def _device_identifier(self, suffix: str) -> str:
+        if self._config_entry is not None:
+            return f"entry_{self._config_entry.entry_id}_{suffix}"
+        return f"{self._name}_{suffix}"
+
+    @property
+    def inverter_device_identifier(self) -> str:
+        return self._device_identifier("inverter")
+
+    @property
+    def storage_device_identifier(self) -> str:
+        return self._device_identifier("battery_storage")
+
+    def meter_device_identifier(self, unit_id: int) -> str:
+        return self._device_identifier(f"meter_{int(unit_id)}")
 
     def close(self):
         """Disconnect the Modbus client and cancel any delayed refresh task."""

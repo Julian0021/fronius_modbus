@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import Counter
 import logging
 import re
 from typing import TYPE_CHECKING
@@ -9,7 +10,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 
 from .button import iter_button_keys
-from .const import DOMAIN
+from .const import DOMAIN, ENTITY_PREFIX
 from .entity_names import async_resolve_entity_name
 from .number import iter_number_keys
 from .select import iter_select_keys
@@ -22,6 +23,8 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 _LEGACY_METER_DEVICE_RE = re.compile(r".*_meter\d+")
+_LEGACY_NAME_METER_DEVICE_RE = re.compile(r".*_meter_(\d+)")
+_LEGACY_INDEXED_METER_DEVICE_RE = re.compile(r".*_meter(\d+)")
 _TOPOLOGY_SENSITIVE_ENTITY_KEY_PREFIXES = (
     "meter_",
     "mppt_module_",
@@ -44,12 +47,27 @@ def _entity_entries_for_config_entry(registry, entry: ConfigEntry):
     return list(er.async_entries_for_config_entry(registry, entry.entry_id))
 
 
+def _device_entries_for_config_entry(registry, entry: ConfigEntry):
+    """Return all device registry entries attached to a config entry."""
+    return list(dr.async_entries_for_config_entry(registry, entry.entry_id))
+
+
 def _legacy_meter_device_needs_removal(device) -> bool:
     """Return whether a device only exists because of the pre-web-api layout."""
     identifiers = getattr(device, "identifiers", set())
     return any(
         identifier_domain == DOMAIN and _LEGACY_METER_DEVICE_RE.fullmatch(identifier)
         for identifier_domain, identifier in identifiers
+    )
+
+
+def _platform_keys(runtime_data: Hub) -> tuple[str, ...]:
+    return (
+        *iter_button_keys(runtime_data),
+        *iter_number_keys(runtime_data),
+        *iter_select_keys(runtime_data),
+        *iter_sensor_keys(runtime_data),
+        *iter_switch_keys(runtime_data),
     )
 
 
@@ -60,14 +78,140 @@ def _entity_unique_id(runtime_data: Hub, key: str) -> str:
 
 def _expected_entity_unique_ids(runtime_data: Hub) -> set[str]:
     """Return the entity ids derived from the same platform-level key iterators."""
-    platform_keys = (
-        *iter_button_keys(runtime_data),
-        *iter_number_keys(runtime_data),
-        *iter_select_keys(runtime_data),
-        *iter_sensor_keys(runtime_data),
-        *iter_switch_keys(runtime_data),
+    return {_entity_unique_id(runtime_data, key) for key in _platform_keys(runtime_data)}
+
+
+def _is_legacy_named_unique_id(unique_id: str, *, key: str, new_unique_id: str) -> bool:
+    return (
+        unique_id != new_unique_id
+        and unique_id.startswith(f"{ENTITY_PREFIX}_")
+        and unique_id.endswith(f"_{key}")
     )
-    return {_entity_unique_id(runtime_data, key) for key in platform_keys}
+
+
+def _entry_device_ref_counts(entity_entries) -> Counter[str]:
+    return Counter(
+        entity_entry.device_id
+        for entity_entry in entity_entries
+        if getattr(entity_entry, "device_id", None)
+    )
+
+
+def _target_device_identifier(runtime_data: Hub, identifier: str) -> str | None:
+    if identifier == runtime_data.inverter_device_identifier:
+        return identifier
+    if identifier == runtime_data.storage_device_identifier:
+        return identifier
+
+    if identifier.endswith("_inverter"):
+        return runtime_data.inverter_device_identifier
+    if identifier.endswith("_battery_storage"):
+        return runtime_data.storage_device_identifier
+
+    if match := _LEGACY_NAME_METER_DEVICE_RE.fullmatch(identifier):
+        unit_id = int(match.group(1))
+        if unit_id in runtime_data.meter_unit_ids:
+            return runtime_data.meter_device_identifier(unit_id)
+        return None
+
+    if match := _LEGACY_INDEXED_METER_DEVICE_RE.fullmatch(identifier):
+        meter_index = int(match.group(1)) - 1
+        if 0 <= meter_index < len(runtime_data.meter_unit_ids):
+            return runtime_data.meter_device_identifier(
+                runtime_data.meter_unit_ids[meter_index]
+            )
+    return None
+
+
+async def async_migrate_legacy_entity_unique_ids(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    runtime_data: Hub,
+) -> None:
+    """Migrate legacy name-based unique ids to the stable entry-based namespace."""
+    registry = er.async_get(hass)
+    entity_entries = _entity_entries_for_config_entry(registry, entry)
+
+    for key in _platform_keys(runtime_data):
+        new_unique_id = _entity_unique_id(runtime_data, key)
+        if any((candidate.unique_id or "") == new_unique_id for candidate in entity_entries):
+            continue
+
+        for candidate in entity_entries:
+            candidate_unique_id = candidate.unique_id or ""
+            if not _is_legacy_named_unique_id(
+                candidate_unique_id,
+                key=key,
+                new_unique_id=new_unique_id,
+            ):
+                continue
+            registry.async_update_entity(
+                candidate.entity_id,
+                new_unique_id=new_unique_id,
+            )
+            _LOGGER.info(
+                "Migrated legacy unique id %s -> %s",
+                candidate_unique_id,
+                new_unique_id,
+            )
+            break
+
+
+async def async_migrate_legacy_devices(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    runtime_data: Hub,
+) -> None:
+    """Migrate legacy name-based device identifiers to the stable entry namespace."""
+    device_registry = dr.async_get(hass)
+    entity_registry = er.async_get(hass)
+    entity_entries = _entity_entries_for_config_entry(entity_registry, entry)
+    device_ref_counts = _entry_device_ref_counts(entity_entries)
+    device_entries = _device_entries_for_config_entry(device_registry, entry)
+
+    candidates_by_target: dict[str, list[object]] = {}
+    for device in device_entries:
+        domain_identifiers = {
+            identifier
+            for identifier_domain, identifier in getattr(device, "identifiers", set())
+            if identifier_domain == DOMAIN
+        }
+        target_identifiers = {
+            target_identifier
+            for identifier in domain_identifiers
+            if (target_identifier := _target_device_identifier(runtime_data, identifier))
+            is not None
+        }
+        if len(target_identifiers) != 1:
+            continue
+        target_identifier = next(iter(target_identifiers))
+        if domain_identifiers == {target_identifier}:
+            continue
+        candidates_by_target.setdefault(target_identifier, []).append(device)
+
+    for target_identifier, candidates in candidates_by_target.items():
+        keeper = max(
+            candidates,
+            key=lambda device: (device_ref_counts.get(device.id, 0), device.id),
+        )
+        device_registry.async_update_device(
+            keeper.id,
+            new_identifiers={(DOMAIN, target_identifier)},
+        )
+        _LOGGER.info(
+            "Migrated legacy device identifiers for %s -> %s",
+            keeper.id,
+            target_identifier,
+        )
+
+        for device in candidates:
+            if device is keeper or device_ref_counts.get(device.id, 0):
+                continue
+            device_registry.async_remove_device(device.id)
+            _LOGGER.info(
+                "Removed orphaned duplicate legacy device %s after identifier migration",
+                device.id,
+            )
 
 
 def _is_topology_sensitive_unique_id(runtime_data: Hub, unique_id: str) -> bool:

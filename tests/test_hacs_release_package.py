@@ -45,14 +45,16 @@ def test_hacs_release_package_imports_from_installed_layout(tmp_path: Path) -> N
 import importlib
 import json
 import sys
+import types
 from pathlib import Path
 
 install_root = Path(sys.argv[1]).resolve()
 expected_root = install_root / "custom_components" / "fronius_modbus"
+custom_components_root = install_root / "custom_components"
 
-import custom_components
-
-custom_components.__path__.append(str(install_root / "custom_components"))
+custom_components = types.ModuleType("custom_components")
+custom_components.__path__ = [str(custom_components_root)]
+sys.modules["custom_components"] = custom_components
 
 package = importlib.import_module("custom_components.fronius_modbus")
 config_flow = importlib.import_module("custom_components.fronius_modbus.config_flow")

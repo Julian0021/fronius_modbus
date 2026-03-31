@@ -5,6 +5,7 @@
         "title": "Set up Fronius System",
         "description": "Enter the host, update interval, and Modbus IP restriction. Minimum interval: 5 seconds. If no stored token exists for this host, the next step asks for the customer password.",
         "data": {
+          "name": "Name",
           "host": "Host",
           "scan_interval": "Update interval (seconds)",
           "restrict_modbus_to_this_ip": "Restrict Modbus to this IP"
@@ -21,6 +22,7 @@
         "title": "Review Fronius System",
         "description": "Review the host, update interval, and Modbus IP restriction. Minimum interval: 5 seconds. If the stored token is missing or invalid, the next step asks for the customer password.",
         "data": {
+          "name": "Name",
           "host": "Host",
           "scan_interval": "Update interval (seconds)",
           "restrict_modbus_to_this_ip": "Restrict Modbus to this IP"

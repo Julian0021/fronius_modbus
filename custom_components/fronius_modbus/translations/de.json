@@ -5,6 +5,7 @@
         "title": "Fronius-System einrichten",
         "description": "Gib den Host, das Aktualisierungsintervall und die Modbus-IP-Beschränkung ein. Mindestintervall: 5 Sekunden. Wenn für diesen Host kein gespeicherter Token existiert, wird im nächsten Schritt nach dem Kundenpasswort gefragt.",
         "data": {
+          "name": "Name",
           "host": "Host",
           "scan_interval": "Aktualisierungsintervall (Sekunden)",
           "restrict_modbus_to_this_ip": "Modbus auf diese IP beschränken"
@@ -21,6 +22,7 @@
         "title": "Fronius-System prüfen",
         "description": "Prüfe Host, Aktualisierungsintervall und Modbus-IP-Beschränkung. Mindestintervall: 5 Sekunden. Wenn der gespeicherte Token fehlt oder ungültig ist, wird im nächsten Schritt nach dem Kundenpasswort gefragt.",
         "data": {
+          "name": "Name",
           "host": "Host",
           "scan_interval": "Aktualisierungsintervall (Sekunden)",
           "restrict_modbus_to_this_ip": "Modbus auf diese IP beschränken"

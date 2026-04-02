@@ -49,6 +49,22 @@ def test_entity_description_kwargs_collects_common_descriptor_fields() -> None:
     }
 
 
+def test_entity_description_kwargs_keeps_english_translation_key_name() -> None:
+    description = SimpleNamespace(
+        translation_key="ext_control_mode",
+        key="example_key",
+    )
+
+    kwargs = entity_description_kwargs(
+        coordinator="coordinator",
+        device_info="device",
+        description=description,
+    )
+
+    assert kwargs["name"] == "ext_control_mode"
+    assert kwargs["translation_key"] == "ext_control_mode"
+
+
 def test_extend_entities_only_adds_when_enabled() -> None:
     entities: list[str] = []
 

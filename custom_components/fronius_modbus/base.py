@@ -7,7 +7,7 @@ from typing import Any
 from homeassistant.core import callback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .entity_names import resolve_cached_entity_name
+from .entity_names import resolve_cached_entity_name, resolve_cached_entity_object_id
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -99,6 +99,14 @@ class FroniusModbusBaseEntity(CoordinatorEntity):
             name=name,
             translation_key=translation_key,
             translation_placeholders=translation_placeholders,
+        )
+        self._attr_suggested_object_id = resolve_cached_entity_object_id(
+            coordinator.hass,
+            entity_platform=self._translation_platform,
+            translation_key=translation_key,
+            placeholders=translation_placeholders,
+            fallback=key,
+            logger=_LOGGER,
         )
         self._attr_unique_id = f"{coordinator.hub.entity_prefix}_{self._key}"
         self._attr_device_info = device_info

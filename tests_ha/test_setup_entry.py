@@ -73,6 +73,9 @@ def _patch_setup_dependencies(
     async def _async_migrate_v019_mppt_statistics(_hass, _entry, provided_runtime_data) -> None:
         registry_calls.append(("migrate_mppt", provided_runtime_data))
 
+    async def _async_preserve_legacy_entity_ids(_hass, _entry, provided_runtime_data) -> None:
+        registry_calls.append(("preserve_legacy_entity_ids", provided_runtime_data))
+
     async def _async_remove_unexpected_entities(
         _hass,
         _entry,
@@ -122,6 +125,11 @@ def _patch_setup_dependencies(
     )
     monkeypatch.setattr(
         integration.registry_maintenance,
+        "async_preserve_legacy_entity_ids",
+        _async_preserve_legacy_entity_ids,
+    )
+    monkeypatch.setattr(
+        integration.registry_maintenance,
         "async_remove_unexpected_entities",
         _async_remove_unexpected_entities,
     )
@@ -161,6 +169,7 @@ async def test_async_setup_and_unload_entry_with_real_homeassistant(
     sync_reconfigure_issue = AsyncMock()
     migrate_mppt = AsyncMock()
     migrate_legacy_entities = AsyncMock()
+    preserve_legacy_entity_ids = AsyncMock()
     remove_unexpected = AsyncMock()
     migrate_legacy_devices = AsyncMock()
     remove_legacy = AsyncMock()
@@ -188,6 +197,11 @@ async def test_async_setup_and_unload_entry_with_real_homeassistant(
         integration.registry_maintenance,
         "async_migrate_v019_mppt_statistics",
         migrate_mppt,
+    )
+    monkeypatch.setattr(
+        integration.registry_maintenance,
+        "async_preserve_legacy_entity_ids",
+        preserve_legacy_entity_ids,
     )
     monkeypatch.setattr(
         integration.registry_maintenance,
@@ -231,6 +245,7 @@ async def test_async_setup_and_unload_entry_with_real_homeassistant(
     bootstrap_init.assert_awaited_once()
     forward_entry_setups.assert_awaited_once_with(entry, integration.PLATFORMS)
     migrate_legacy_entities.assert_awaited_once()
+    preserve_legacy_entity_ids.assert_awaited_once()
     migrate_mppt.assert_awaited_once()
     remove_unexpected.assert_awaited_once()
     migrate_legacy_devices.assert_awaited_once()
@@ -297,6 +312,7 @@ async def test_async_setup_entry_closes_and_detaches_runtime_data_when_forwardin
     assert issue_calls == [True, True]
     assert registry_calls == [
         ("migrate_legacy_entities", runtime_data),
+        ("preserve_legacy_entity_ids", runtime_data),
         ("migrate_mppt", runtime_data),
         ("remove_unexpected", runtime_data, False),
         ("migrate_legacy_devices", runtime_data),
@@ -329,6 +345,7 @@ async def test_async_setup_entry_preserves_topology_entities_when_patched_runtim
     assert issue_calls == [True, True]
     assert registry_calls == [
         ("migrate_legacy_entities", runtime_data),
+        ("preserve_legacy_entity_ids", runtime_data),
         ("migrate_mppt", runtime_data),
         ("remove_unexpected", runtime_data, True),
         ("migrate_legacy_devices", runtime_data),

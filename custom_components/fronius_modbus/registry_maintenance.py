@@ -11,7 +11,10 @@ from homeassistant.helpers import device_registry as dr, entity_registry as er
 
 from .button import iter_button_keys
 from .const import DOMAIN, ENTITY_PREFIX
-from .entity_names import async_resolve_entity_name
+from .entity_names import (
+    async_resolve_entity_name,
+    async_resolve_entity_name_for_language,
+)
 from .number import iter_number_keys
 from .select import iter_select_keys
 from .sensor import iter_sensor_keys
@@ -25,6 +28,15 @@ _LOGGER = logging.getLogger(__name__)
 _LEGACY_METER_DEVICE_RE = re.compile(r".*_meter\d+")
 _LEGACY_NAME_METER_DEVICE_RE = re.compile(r".*_meter_(\d+)")
 _LEGACY_INDEXED_METER_DEVICE_RE = re.compile(r".*_meter(\d+)")
+_LEGACY_PREFERRED_ENTITY_IDS = {
+    "ext_control_mode": "select.hv_storage_control_mode",
+    "discharge_limit": "number.hv_discharge_limit",
+    "grid_charge_power": "number.hv_grid_charge_power",
+    "grid_discharge_power": "number.hv_grid_discharge_power",
+    "charge_limit": "number.hv_pv_charge_limit",
+    "soc_minimum": "number.hv_soc_minimum",
+    "soc_maximum": "number.hv_soc_maximum",
+}
 _TOPOLOGY_SENSITIVE_ENTITY_KEY_PREFIXES = (
     "meter_",
     "mppt_module_",
@@ -42,6 +54,8 @@ _V019_MPPT_UNIQUE_ID_MAPPINGS = (
     ("fm_mppt4_lfte", "storage_discharge_lfte", "storage_discharge_lfte", None),
 )
 
+_MPPT_MODULE_KEY_RE = re.compile(r"mppt_module_(\d+)_")
+
 def _entity_entries_for_config_entry(registry, entry: ConfigEntry):
     """Return all registry entities attached to a config entry."""
     return list(er.async_entries_for_config_entry(registry, entry.entry_id))
@@ -58,6 +72,34 @@ def _entity_unique_id_exists(registry, unique_id: str) -> bool:
 def _device_entries_for_config_entry(registry, entry: ConfigEntry):
     """Return all device registry entries attached to a config entry."""
     return list(dr.async_entries_for_config_entry(registry, entry.entry_id))
+
+
+def _entity_id_exists(registry, entity_id: str) -> bool:
+    """Return whether any registry entry already uses the entity id."""
+    return entity_id in getattr(registry, "entities", {})
+
+
+def _entity_id_domain(entity_id: str) -> str:
+    """Return the entity domain from an entity id."""
+    return entity_id.split(".", 1)[0]
+
+
+def _unique_id_key(runtime_data: Hub, unique_id: str) -> str | None:
+    entity_prefix = f"{runtime_data.entity_prefix}_"
+    if not unique_id.startswith(entity_prefix):
+        return None
+    return unique_id.removeprefix(entity_prefix)
+
+
+def _translation_placeholders_for_key(
+    key: str,
+    translation_key: str,
+) -> dict[str, str] | None:
+    if translation_key.startswith("mppt_module_") and (
+        match := _MPPT_MODULE_KEY_RE.match(key)
+    ):
+        return {"module": str(int(match.group(1)) + 1)}
+    return None
 
 
 def _legacy_meter_device_needs_removal(device) -> bool:
@@ -163,6 +205,85 @@ async def async_migrate_legacy_entity_unique_ids(
                 new_unique_id,
             )
             break
+
+
+async def async_preserve_legacy_entity_ids(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    runtime_data: Hub,
+) -> None:
+    """Normalize translated entity ids to stable English ids."""
+    registry = er.async_get(hass)
+    device_registry = dr.async_get(hass)
+    entity_entries = _entity_entries_for_config_entry(registry, entry)
+    reserved_entity_ids = {candidate.entity_id for candidate in entity_entries}
+
+    for candidate in entity_entries:
+        unique_id = candidate.unique_id or ""
+        key = _unique_id_key(runtime_data, unique_id)
+        if key is None:
+            continue
+
+        preferred_entity_id = _LEGACY_PREFERRED_ENTITY_IDS.get(key)
+        if preferred_entity_id is not None and (
+            _entity_id_domain(preferred_entity_id)
+            != _entity_id_domain(candidate.entity_id)
+        ):
+            preferred_entity_id = None
+        if preferred_entity_id is None:
+            translation_key = getattr(candidate, "translation_key", None)
+            if not isinstance(translation_key, str) or not translation_key:
+                continue
+
+            placeholders = _translation_placeholders_for_key(key, translation_key)
+            entity_name = await async_resolve_entity_name_for_language(
+                hass,
+                language="en",
+                entity_platform=candidate.domain,
+                translation_key=translation_key,
+                placeholders=placeholders,
+                fallback=translation_key,
+                logger=_LOGGER,
+            )
+            suggested_object_id = entity_name
+            if candidate.device_id and (
+                device_entry := device_registry.async_get(candidate.device_id)
+            ):
+                device_name = getattr(device_entry, "name_by_user", None) or getattr(
+                    device_entry,
+                    "name",
+                    None,
+                )
+                if device_name:
+                    suggested_object_id = f"{device_name} {entity_name}"
+
+            reserved_entity_ids.discard(candidate.entity_id)
+            preferred_entity_id = registry.async_get_available_entity_id(
+                candidate.domain,
+                suggested_object_id,
+                current_entity_id=candidate.entity_id,
+                reserved_entity_ids=reserved_entity_ids,
+            )
+            reserved_entity_ids.add(preferred_entity_id)
+
+        if candidate.entity_id == preferred_entity_id:
+            continue
+        if preferred_entity_id is None or (
+            _entity_id_exists(registry, preferred_entity_id)
+            and candidate.entity_id != preferred_entity_id
+        ):
+            continue
+
+        registry.async_update_entity(
+            candidate.entity_id,
+            new_entity_id=preferred_entity_id,
+        )
+        _LOGGER.info(
+            "Normalized entity id %s -> %s for %s",
+            candidate.entity_id,
+            preferred_entity_id,
+            unique_id,
+        )
 
 
 async def async_migrate_legacy_devices(

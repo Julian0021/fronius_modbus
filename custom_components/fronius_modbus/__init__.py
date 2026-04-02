@@ -87,6 +87,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: HubConfigEntry) -> bool:
             entry,
             runtime_data,
         )
+        await registry_maintenance.async_preserve_legacy_entity_ids(
+            hass,
+            entry,
+            runtime_data,
+        )
         await registry_maintenance.async_migrate_v019_mppt_statistics(
             hass,
             entry,

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from types import SimpleNamespace
 
 from custom_components.fronius_modbus.button import iter_button_keys
@@ -9,6 +10,7 @@ from custom_components.fronius_modbus.registry_maintenance import (
     async_migrate_legacy_devices,
     async_migrate_legacy_entity_unique_ids,
     async_migrate_v019_mppt_statistics,
+    async_preserve_legacy_entity_ids,
     async_remove_unexpected_entities,
 )
 from custom_components.fronius_modbus.select import iter_select_keys
@@ -94,26 +96,38 @@ class _FakeEntityRegistry:
                 "reserved_entity_ids": set(reserved_entity_ids),
             }
         )
-        return "sensor.fronius_mppt_module_1_dc_power"
+        domain = current_entity_id.split(".", 1)[0]
+        slug = re.sub(r"[^a-z0-9]+", "_", suggested_object_id.lower()).strip("_")
+        entity_id = f"{domain}.{slug}"
+        index = 2
+        while entity_id in reserved_entity_ids:
+            entity_id = f"{domain}.{slug}_{index}"
+            index += 1
+        return entity_id
 
     def async_update_entity(
         self,
         entity_id: str,
         *,
         new_entity_id: str | None = None,
-        new_unique_id: str,
+        new_unique_id: str | None = None,
     ) -> None:
         entry = self._entries.pop(entity_id)
-        self._entity_ids_by_unique_id.pop(entry.unique_id, None)
+        previous_unique_id = getattr(entry, "unique_id", None)
+        if previous_unique_id is not None:
+            self._entity_ids_by_unique_id.pop(previous_unique_id, None)
         entry.entity_id = new_entity_id or entity_id
-        entry.unique_id = new_unique_id
+        if new_unique_id is not None:
+            entry.previous_unique_id = previous_unique_id
+            entry.unique_id = new_unique_id
         self._entries[entry.entity_id] = entry
-        self._entity_ids_by_unique_id[new_unique_id] = entry.entity_id
+        if getattr(entry, "unique_id", None) is not None:
+            self._entity_ids_by_unique_id[entry.unique_id] = entry.entity_id
         self.update_calls.append(
             {
                 "entity_id": entity_id,
                 "new_entity_id": entry.entity_id,
-                "new_unique_id": new_unique_id,
+                "new_unique_id": getattr(entry, "unique_id", None),
             }
         )
 
@@ -292,6 +306,178 @@ async def test_async_migrate_legacy_entity_unique_ids_skips_when_target_exists_g
     assert legacy_entry.unique_id == "fm_fronius_Conn"
 
 
+async def test_async_preserve_legacy_entity_ids_keeps_old_storage_entity_id_on_upgrade(
+    monkeypatch,
+) -> None:
+    hub = _RegistryHub()
+    current_entry = SimpleNamespace(
+        entity_id="select.hvs_speicher_steuermodus",
+        unique_id="fm_entry-1_ext_control_mode",
+        previous_unique_id="fm_fronius__ext_control_mode",
+        device_id="device-storage",
+        platform="select",
+    )
+    registry = _FakeEntityRegistry(current_entry)
+
+    monkeypatch.setattr(
+        "custom_components.fronius_modbus.registry_maintenance.er.async_get",
+        lambda _hass: registry,
+    )
+    monkeypatch.setattr(
+        "custom_components.fronius_modbus.registry_maintenance.er.async_entries_for_config_entry",
+        lambda _registry, _entry_id: [current_entry],
+    )
+
+    await async_preserve_legacy_entity_ids(
+        hass=object(),
+        entry=SimpleNamespace(entry_id="entry-1"),
+        runtime_data=hub,
+    )
+
+    assert registry.update_calls == [
+        {
+            "entity_id": "select.hvs_speicher_steuermodus",
+            "new_entity_id": "select.hv_storage_control_mode",
+            "new_unique_id": "fm_entry-1_ext_control_mode",
+        }
+    ]
+    assert current_entry.entity_id == "select.hv_storage_control_mode"
+
+
+async def test_async_preserve_legacy_entity_ids_normalizes_translated_ids_to_english(
+    monkeypatch,
+) -> None:
+    hub = _RegistryHub()
+    current_entry = SimpleNamespace(
+        entity_id="sensor.hvs_ladezustand",
+        unique_id="fm_entry-1_soc",
+        previous_unique_id=None,
+        device_id="device-storage",
+        platform="sensor",
+        domain="sensor",
+        translation_key="soc",
+    )
+    registry = _FakeEntityRegistry(current_entry)
+    device_registry = _FakeDeviceRegistry(
+        {
+            "device-storage": SimpleNamespace(
+                name="HVS",
+                name_by_user=None,
+            )
+        }
+    )
+
+    monkeypatch.setattr(
+        "custom_components.fronius_modbus.registry_maintenance.er.async_get",
+        lambda _hass: registry,
+    )
+    monkeypatch.setattr(
+        "custom_components.fronius_modbus.registry_maintenance.er.async_entries_for_config_entry",
+        lambda _registry, _entry_id: [current_entry],
+    )
+    monkeypatch.setattr(
+        "custom_components.fronius_modbus.registry_maintenance.dr.async_get",
+        lambda _hass: device_registry,
+    )
+
+    async def _async_resolve_entity_name_for_language(*_args, **_kwargs) -> str:
+        return "State of charge"
+
+    monkeypatch.setattr(
+        "custom_components.fronius_modbus.registry_maintenance.async_resolve_entity_name_for_language",
+        _async_resolve_entity_name_for_language,
+    )
+
+    await async_preserve_legacy_entity_ids(
+        hass=object(),
+        entry=SimpleNamespace(entry_id="entry-1"),
+        runtime_data=hub,
+    )
+
+    assert registry.available_entity_id_calls == [
+        {
+            "suggested_object_id": "HVS State of charge",
+            "current_entity_id": "sensor.hvs_ladezustand",
+            "reserved_entity_ids": set(),
+        }
+    ]
+    assert registry.update_calls == [
+        {
+            "entity_id": "sensor.hvs_ladezustand",
+            "new_entity_id": "sensor.hvs_state_of_charge",
+            "new_unique_id": "fm_entry-1_soc",
+        }
+    ]
+    assert current_entry.entity_id == "sensor.hvs_state_of_charge"
+
+
+async def test_async_preserve_legacy_entity_ids_skips_cross_domain_legacy_mapping(
+    monkeypatch,
+) -> None:
+    hub = _RegistryHub()
+    current_entry = SimpleNamespace(
+        entity_id="sensor.hvs_minimaler_soc",
+        unique_id="fm_entry-1_soc_minimum",
+        previous_unique_id=None,
+        device_id="device-storage",
+        platform="sensor",
+        domain="sensor",
+        translation_key="soc_minimum",
+    )
+    registry = _FakeEntityRegistry(current_entry)
+    device_registry = _FakeDeviceRegistry(
+        {
+            "device-storage": SimpleNamespace(
+                name="HVS",
+                name_by_user=None,
+            )
+        }
+    )
+
+    monkeypatch.setattr(
+        "custom_components.fronius_modbus.registry_maintenance.er.async_get",
+        lambda _hass: registry,
+    )
+    monkeypatch.setattr(
+        "custom_components.fronius_modbus.registry_maintenance.er.async_entries_for_config_entry",
+        lambda _registry, _entry_id: [current_entry],
+    )
+    monkeypatch.setattr(
+        "custom_components.fronius_modbus.registry_maintenance.dr.async_get",
+        lambda _hass: device_registry,
+    )
+
+    async def _async_resolve_entity_name_for_language(*_args, **_kwargs) -> str:
+        return "Minimum SoC"
+
+    monkeypatch.setattr(
+        "custom_components.fronius_modbus.registry_maintenance.async_resolve_entity_name_for_language",
+        _async_resolve_entity_name_for_language,
+    )
+
+    await async_preserve_legacy_entity_ids(
+        hass=object(),
+        entry=SimpleNamespace(entry_id="entry-1"),
+        runtime_data=hub,
+    )
+
+    assert registry.available_entity_id_calls == [
+        {
+            "suggested_object_id": "HVS Minimum SoC",
+            "current_entity_id": "sensor.hvs_minimaler_soc",
+            "reserved_entity_ids": set(),
+        }
+    ]
+    assert registry.update_calls == [
+        {
+            "entity_id": "sensor.hvs_minimaler_soc",
+            "new_entity_id": "sensor.hvs_minimum_soc",
+            "new_unique_id": "fm_entry-1_soc_minimum",
+        }
+    ]
+    assert current_entry.entity_id == "sensor.hvs_minimum_soc"
+
+
 async def test_async_migrate_legacy_devices_prefers_referenced_device_and_removes_orphan(
     monkeypatch,
 ) -> None:
@@ -401,11 +587,11 @@ async def test_async_migrate_v019_mppt_statistics_renames_old_mppt_entities(
     assert registry.update_calls == [
         {
             "entity_id": "sensor.legacy_mppt_1_power",
-            "new_entity_id": "sensor.fronius_mppt_module_1_dc_power",
+            "new_entity_id": "sensor.fronius_gen24_mppt_module_1_dc_power",
             "new_unique_id": "fm_entry-1_mppt_module_0_dc_power",
         }
     ]
-    assert old_entry.entity_id == "sensor.fronius_mppt_module_1_dc_power"
+    assert old_entry.entity_id == "sensor.fronius_gen24_mppt_module_1_dc_power"
     assert old_entry.unique_id == "fm_entry-1_mppt_module_0_dc_power"
 
 

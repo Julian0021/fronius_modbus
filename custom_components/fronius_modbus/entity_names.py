@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
+import unicodedata
 
 from homeassistant.core import HomeAssistant
 
@@ -10,6 +12,9 @@ from .translation import (
     cached_translation_data,
     translation_language_candidates,
 )
+
+_NON_OBJECT_ID_RE = re.compile(r"[^a-z0-9_]+")
+_MULTI_UNDERSCORE_RE = re.compile(r"_+")
 
 
 def _translated_name_from_data(
@@ -77,6 +82,7 @@ def _resolve_entity_name_from_translation_data(
 def _resolve_entity_name_from_lookup(
     hass: HomeAssistant,
     *,
+    language_candidates: list[str],
     entity_platform: str | None,
     translation_key: str | None,
     placeholders: dict[str, str] | None,
@@ -87,7 +93,7 @@ def _resolve_entity_name_from_lookup(
     if translation_key is None or entity_platform is None:
         return fallback
 
-    for candidate in translation_language_candidates(hass):
+    for candidate in language_candidates:
         resolved_name = _resolve_entity_name_from_translation_data(
             load_translation_data(candidate),
             entity_platform=entity_platform,
@@ -99,6 +105,16 @@ def _resolve_entity_name_from_lookup(
             return resolved_name
 
     return fallback
+
+
+def _slugify_object_id(value: str) -> str:
+    normalized = (
+        unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode("ascii")
+    )
+    normalized = normalized.lower().replace("-", "_").replace(" ", "_")
+    normalized = _NON_OBJECT_ID_RE.sub("_", normalized)
+    normalized = _MULTI_UNDERSCORE_RE.sub("_", normalized).strip("_")
+    return normalized or "entity"
 
 
 def resolve_cached_entity_name(
@@ -113,6 +129,7 @@ def resolve_cached_entity_name(
     """Resolve an entity name from the translation cache, or return the fallback."""
     return _resolve_entity_name_from_lookup(
         hass,
+        language_candidates=translation_language_candidates(hass),
         entity_platform=entity_platform,
         translation_key=translation_key,
         placeholders=placeholders,
@@ -141,6 +158,7 @@ async def async_resolve_entity_name(
 
     return _resolve_entity_name_from_lookup(
         hass,
+        language_candidates=translation_language_candidates(hass),
         entity_platform=entity_platform,
         translation_key=translation_key,
         placeholders=placeholders,
@@ -148,3 +166,94 @@ async def async_resolve_entity_name(
         logger=logger,
         load_translation_data=translation_data_by_language.__getitem__,
     )
+
+
+def resolve_cached_entity_name_for_language(
+    hass: HomeAssistant,
+    *,
+    language: str,
+    entity_platform: str | None,
+    translation_key: str | None,
+    placeholders: dict[str, str] | None = None,
+    fallback: str,
+    logger: logging.Logger | None = None,
+) -> str:
+    """Resolve an entity name for a specific language from the translation cache."""
+    return _resolve_entity_name_from_lookup(
+        hass,
+        language_candidates=[language],
+        entity_platform=entity_platform,
+        translation_key=translation_key,
+        placeholders=placeholders,
+        fallback=fallback,
+        logger=logger,
+        load_translation_data=cached_translation_data,
+    )
+
+
+async def async_resolve_entity_name_for_language(
+    hass: HomeAssistant,
+    *,
+    language: str,
+    entity_platform: str,
+    translation_key: str,
+    placeholders: dict[str, str] | None = None,
+    fallback: str,
+    logger: logging.Logger | None = None,
+) -> str:
+    """Resolve an entity name for a specific language from bundled translations."""
+    translation_data = await async_get_translation_data(hass, language)
+    return _resolve_entity_name_from_lookup(
+        hass,
+        language_candidates=[language],
+        entity_platform=entity_platform,
+        translation_key=translation_key,
+        placeholders=placeholders,
+        fallback=fallback,
+        logger=logger,
+        load_translation_data={language: translation_data}.__getitem__,
+    )
+
+
+def resolve_cached_entity_object_id(
+    hass: HomeAssistant,
+    *,
+    entity_platform: str | None,
+    translation_key: str | None,
+    placeholders: dict[str, str] | None = None,
+    fallback: str,
+    logger: logging.Logger | None = None,
+) -> str:
+    """Resolve a stable English object id for an entity."""
+    entity_name = resolve_cached_entity_name_for_language(
+        hass,
+        language="en",
+        entity_platform=entity_platform,
+        translation_key=translation_key,
+        placeholders=placeholders,
+        fallback=fallback,
+        logger=logger,
+    )
+    return _slugify_object_id(entity_name)
+
+
+async def async_resolve_entity_object_id(
+    hass: HomeAssistant,
+    *,
+    entity_platform: str,
+    translation_key: str,
+    placeholders: dict[str, str] | None = None,
+    fallback: str,
+    logger: logging.Logger | None = None,
+) -> str:
+    """Resolve a stable English object id for an entity from bundled translations."""
+    entity_name = await async_resolve_entity_name_for_language(
+        hass,
+        language="en",
+        entity_platform=entity_platform,
+        translation_key=translation_key,
+        placeholders=placeholders,
+        fallback=fallback,
+        logger=logger,
+    )
+    return _slugify_object_id(entity_name)

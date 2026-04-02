@@ -50,3 +50,34 @@ async def test_async_resolve_entity_name_uses_fallback_when_missing(monkeypatch)
     )
 
     assert resolved == "Fallback"
+
+
+def test_resolve_cached_entity_object_id_uses_english_translation(monkeypatch) -> None:
+    hass = FakeHass(language="de")
+
+    monkeypatch.setattr(
+        entity_names,
+        "cached_translation_data",
+        lambda language: {
+            "entity": {
+                "select": {
+                    "ext_control_mode": {
+                        "name": (
+                            "Storage Control Mode"
+                            if language == "en"
+                            else "Speicher-Steuermodus"
+                        )
+                    }
+                }
+            }
+        },
+    )
+
+    object_id = entity_names.resolve_cached_entity_object_id(
+        hass,
+        entity_platform="select",
+        translation_key="ext_control_mode",
+        fallback="ext_control_mode",
+    )
+
+    assert object_id == "storage_control_mode"

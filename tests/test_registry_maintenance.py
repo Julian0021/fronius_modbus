@@ -65,6 +65,8 @@ class _FakeEntityRegistry:
         for entry in entries:
             if not hasattr(entry, "platform"):
                 entry.platform = "sensor"
+            if not hasattr(entry, "domain"):
+                entry.domain = entry.entity_id.split(".", 1)[0]
         self._entries = {entry.entity_id: entry for entry in entries}
         self.entities = self._entries
         self._entity_ids_by_unique_id = {
@@ -224,6 +226,50 @@ async def test_async_remove_unexpected_entities_preserves_topology_sensitive_ids
     assert removed_entity_ids == ["sensor.stale_stable"]
 
 
+async def test_async_remove_unexpected_entities_drops_cross_domain_legacy_duplicates(
+    monkeypatch,
+) -> None:
+    hub = _RegistryHub()
+    registry_entries = [
+        SimpleNamespace(
+            entity_id="select.legacy_storage_control_mode",
+            unique_id="fm_entry-1_control_mode",
+            domain="select",
+        ),
+        SimpleNamespace(
+            entity_id="sensor.core_storage_control_mode",
+            unique_id="fm_entry-1_control_mode",
+            domain="sensor",
+        ),
+        SimpleNamespace(
+            entity_id="select.storage_control_mode",
+            unique_id="fm_entry-1_ext_control_mode",
+            domain="select",
+        ),
+    ]
+    removed_entity_ids: list[str] = []
+    registry = SimpleNamespace(
+        async_remove=lambda entity_id: removed_entity_ids.append(entity_id)
+    )
+
+    monkeypatch.setattr(
+        "custom_components.fronius_modbus.registry_maintenance.er.async_get",
+        lambda _hass: registry,
+    )
+    monkeypatch.setattr(
+        "custom_components.fronius_modbus.registry_maintenance.er.async_entries_for_config_entry",
+        lambda _registry, _entry_id: registry_entries,
+    )
+
+    await async_remove_unexpected_entities(
+        hass=object(),
+        entry=SimpleNamespace(entry_id="entry-1"),
+        runtime_data=hub,
+    )
+
+    assert removed_entity_ids == ["select.legacy_storage_control_mode"]
+
+
 async def test_async_migrate_legacy_entity_unique_ids_renames_name_based_prefixes(
     monkeypatch,
 ) -> None:
@@ -304,6 +350,51 @@ async def test_async_migrate_legacy_entity_unique_ids_skips_when_target_exists_g
 
     assert registry.update_calls == []
     assert legacy_entry.unique_id == "fm_fronius_Conn"
+
+
+async def test_async_migrate_legacy_entity_unique_ids_allows_cross_domain_target_reuse(
+    monkeypatch,
+) -> None:
+    hub = _RegistryHub()
+    legacy_select = SimpleNamespace(
+        entity_id="select.legacy_connection",
+        unique_id="fm_fronius_Conn",
+        device_id="device-legacy",
+        platform="select",
+        domain="select",
+    )
+    current_sensor = SimpleNamespace(
+        entity_id="sensor.current_connection",
+        unique_id="fm_entry-1_Conn",
+        device_id="device-current",
+        platform="sensor",
+        domain="sensor",
+    )
+    registry = _FakeEntityRegistry(legacy_select, current_sensor)
+
+    monkeypatch.setattr(
+        "custom_components.fronius_modbus.registry_maintenance.er.async_get",
+        lambda _hass: registry,
+    )
+    monkeypatch.setattr(
+        "custom_components.fronius_modbus.registry_maintenance.er.async_entries_for_config_entry",
+        lambda _registry, _entry_id: [legacy_select],
+    )
+
+    await async_migrate_legacy_entity_unique_ids(
+        hass=object(),
+        entry=SimpleNamespace(entry_id="entry-1"),
+        runtime_data=hub,
+    )
+
+    assert registry.update_calls == [
+        {
+            "entity_id": "select.legacy_connection",
+            "new_entity_id": "select.legacy_connection",
+            "new_unique_id": "fm_entry-1_Conn",
+        }
+    ]
+    assert legacy_select.unique_id == "fm_entry-1_Conn"
 
 
 async def test_async_preserve_legacy_entity_ids_keeps_old_storage_entity_id_on_upgrade(
@@ -530,6 +621,56 @@ async def test_async_migrate_legacy_devices_prefers_referenced_device_and_remove
         }
     ]
     assert registry.removed_device_ids == ["device-old"]
+
+
+async def test_async_migrate_legacy_devices_keeps_existing_stable_device_and_removes_orphan(
+    monkeypatch,
+) -> None:
+    hub = _RegistryHub()
+    stable_device = SimpleNamespace(
+        id="device-stable",
+        identifiers={("fronius_modbus", "entry_entry-1_inverter")},
+    )
+    legacy_device = SimpleNamespace(
+        id="device-legacy",
+        identifiers={("fronius_modbus", "Fronius_inverter")},
+    )
+    registry = _MutableDeviceRegistry(stable_device, legacy_device)
+    entity_entries = [
+        SimpleNamespace(
+            entity_id="sensor.phase_a",
+            unique_id="fm_entry-1_A",
+            device_id="device-stable",
+            domain="sensor",
+        )
+    ]
+
+    monkeypatch.setattr(
+        "custom_components.fronius_modbus.registry_maintenance.dr.async_get",
+        lambda _hass: registry,
+    )
+    monkeypatch.setattr(
+        "custom_components.fronius_modbus.registry_maintenance.dr.async_entries_for_config_entry",
+        lambda _registry, _entry_id: [stable_device, legacy_device],
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "custom_components.fronius_modbus.registry_maintenance.er.async_get",
+        lambda _hass: object(),
+    )
+    monkeypatch.setattr(
+        "custom_components.fronius_modbus.registry_maintenance.er.async_entries_for_config_entry",
+        lambda _registry, _entry_id: entity_entries,
+    )
+
+    await async_migrate_legacy_devices(
+        hass=object(),
+        entry=SimpleNamespace(entry_id="entry-1"),
+        runtime_data=hub,
+    )
+
+    assert registry.update_calls == []
+    assert registry.removed_device_ids == ["device-legacy"]
 
 
 async def test_async_migrate_v019_mppt_statistics_renames_old_mppt_entities(

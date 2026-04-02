@@ -61,10 +61,19 @@ def _entity_entries_for_config_entry(registry, entry: ConfigEntry):
     return list(er.async_entries_for_config_entry(registry, entry.entry_id))
 
 
-def _entity_unique_id_exists(registry, unique_id: str) -> bool:
-    """Return whether any registry entry already uses the unique id."""
+def _entity_domain(entity_entry) -> str:
+    """Return the entity domain for a registry entry."""
+    domain = getattr(entity_entry, "domain", None)
+    if isinstance(domain, str) and domain:
+        return domain
+    return _entity_id_domain(entity_entry.entity_id)
+
+
+def _entity_unique_id_exists(registry, *, domain: str, unique_id: str) -> bool:
+    """Return whether any registry entry already uses the unique id in a domain."""
     return any(
         (entity_entry.unique_id or "") == unique_id
+        and _entity_domain(entity_entry) == domain
         for entity_entry in getattr(registry, "entities", {}).values()
     )
 
@@ -111,13 +120,13 @@ def _legacy_meter_device_needs_removal(device) -> bool:
     )
 
 
-def _platform_keys(runtime_data: Hub) -> tuple[str, ...]:
+def _platform_entity_keys(runtime_data: Hub) -> tuple[tuple[str, str], ...]:
     return (
-        *iter_button_keys(runtime_data),
-        *iter_number_keys(runtime_data),
-        *iter_select_keys(runtime_data),
-        *iter_sensor_keys(runtime_data),
-        *iter_switch_keys(runtime_data),
+        *(("button", key) for key in iter_button_keys(runtime_data)),
+        *(("number", key) for key in iter_number_keys(runtime_data)),
+        *(("select", key) for key in iter_select_keys(runtime_data)),
+        *(("sensor", key) for key in iter_sensor_keys(runtime_data)),
+        *(("switch", key) for key in iter_switch_keys(runtime_data)),
     )
 
 
@@ -128,7 +137,18 @@ def _entity_unique_id(runtime_data: Hub, key: str) -> str:
 
 def _expected_entity_unique_ids(runtime_data: Hub) -> set[str]:
     """Return the entity ids derived from the same platform-level key iterators."""
-    return {_entity_unique_id(runtime_data, key) for key in _platform_keys(runtime_data)}
+    return {
+        _entity_unique_id(runtime_data, key)
+        for _domain, key in _platform_entity_keys(runtime_data)
+    }
+
+
+def _expected_entity_registrations(runtime_data: Hub) -> set[tuple[str, str]]:
+    """Return the expected (domain, unique_id) pairs for current entities."""
+    return {
+        (domain, _entity_unique_id(runtime_data, key))
+        for domain, key in _platform_entity_keys(runtime_data)
+    }
 
 
 def _is_legacy_named_unique_id(unique_id: str, *, key: str, new_unique_id: str) -> bool:
@@ -182,12 +202,14 @@ async def async_migrate_legacy_entity_unique_ids(
     registry = er.async_get(hass)
     entity_entries = _entity_entries_for_config_entry(registry, entry)
 
-    for key in _platform_keys(runtime_data):
+    for domain, key in _platform_entity_keys(runtime_data):
         new_unique_id = _entity_unique_id(runtime_data, key)
-        if _entity_unique_id_exists(registry, new_unique_id):
+        if _entity_unique_id_exists(registry, domain=domain, unique_id=new_unique_id):
             continue
 
         for candidate in entity_entries:
+            if _entity_domain(candidate) != domain:
+                continue
             candidate_unique_id = candidate.unique_id or ""
             if not _is_legacy_named_unique_id(
                 candidate_unique_id,
@@ -297,14 +319,15 @@ async def async_migrate_legacy_devices(
     entity_entries = _entity_entries_for_config_entry(entity_registry, entry)
     device_ref_counts = _entry_device_ref_counts(entity_entries)
     device_entries = _device_entries_for_config_entry(device_registry, entry)
+    existing_devices_by_identifier = {
+        identifier: device
+        for device in device_entries
+        for identifier in _domain_identifiers(device)
+    }
 
     candidates_by_target: dict[str, list[object]] = {}
     for device in device_entries:
-        domain_identifiers = {
-            identifier
-            for identifier_domain, identifier in getattr(device, "identifiers", set())
-            if identifier_domain == DOMAIN
-        }
+        domain_identifiers = _domain_identifiers(device)
         target_identifiers = {
             target_identifier
             for identifier in domain_identifiers
@@ -314,24 +337,26 @@ async def async_migrate_legacy_devices(
         if len(target_identifiers) != 1:
             continue
         target_identifier = next(iter(target_identifiers))
-        if domain_identifiers == {target_identifier}:
-            continue
         candidates_by_target.setdefault(target_identifier, []).append(device)
 
     for target_identifier, candidates in candidates_by_target.items():
-        keeper = max(
-            candidates,
-            key=lambda device: (device_ref_counts.get(device.id, 0), device.id),
-        )
-        device_registry.async_update_device(
-            keeper.id,
-            new_identifiers={(DOMAIN, target_identifier)},
-        )
-        _LOGGER.info(
-            "Migrated legacy device identifiers for %s -> %s",
-            keeper.id,
-            target_identifier,
-        )
+        keeper = existing_devices_by_identifier.get(target_identifier)
+        if keeper is None:
+            keeper = max(
+                candidates,
+                key=lambda device: (device_ref_counts.get(device.id, 0), device.id),
+            )
+
+        if _domain_identifiers(keeper) != {target_identifier}:
+            device_registry.async_update_device(
+                keeper.id,
+                new_identifiers={(DOMAIN, target_identifier)},
+            )
+            _LOGGER.info(
+                "Migrated legacy device identifiers for %s -> %s",
+                keeper.id,
+                target_identifier,
+            )
 
         for device in candidates:
             if device is keeper or device_ref_counts.get(device.id, 0):
@@ -350,6 +375,15 @@ def _is_topology_sensitive_unique_id(runtime_data: Hub, unique_id: str) -> bool:
         return False
     key = unique_id.removeprefix(entity_prefix)
     return key.startswith(_TOPOLOGY_SENSITIVE_ENTITY_KEY_PREFIXES)
+
+
+def _domain_identifiers(device) -> set[str]:
+    """Return the identifiers for this integration on a device entry."""
+    return {
+        identifier
+        for identifier_domain, identifier in getattr(device, "identifiers", set())
+        if identifier_domain == DOMAIN
+    }
 
 
 async def async_migrate_v019_mppt_statistics(
@@ -450,11 +484,12 @@ async def async_remove_unexpected_entities(
 ) -> None:
     """Drop registry entities that are not part of the current runtime model."""
     registry = er.async_get(hass)
-    expected_unique_ids = _expected_entity_unique_ids(runtime_data)
+    expected_registrations = _expected_entity_registrations(runtime_data)
+    entity_entries = _entity_entries_for_config_entry(registry, entry)
     removed = 0
-    for entity_entry in _entity_entries_for_config_entry(registry, entry):
+    for entity_entry in entity_entries:
         unique_id = entity_entry.unique_id or ""
-        if not unique_id or unique_id in expected_unique_ids:
+        if not unique_id or (_entity_domain(entity_entry), unique_id) in expected_registrations:
             continue
         if (
             preserve_topology_sensitive_entities
